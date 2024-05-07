@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include "chess.h"
 
 /*
   _______________________________________
@@ -45,7 +46,6 @@ need 12 piece bitboards: a pair for pawns, knights, bishops, rooks, queens, and
 kings. We'll also want 2 color bitboards, and a bitboard to track every piece.
 */
 
-#define U64 unsigned long long
 U64 piece_bb[12];
 U64 color_bb[2];
 U64 all_bb;
@@ -53,8 +53,7 @@ U64 all_bb;
 // It will be useful to have a bitboard printer as a debugging tool, which we'll
 // define here. It's pretty naive, just iterating through the bits and printing
 // 1 or 0.
-
-void print_bitboard(U64 bitboard) {
+static void print_bitboard(U64 bitboard) {
     // start position is a 1 in the far left bit
     U64 start = (U64)1 << 63;
     // we choose to make rows the "slow" axis, columns the "fast" axis
@@ -108,34 +107,67 @@ void init_board() {
 /*
 
 FEN is a useful "human-readable" notation for giving the engine a particular
-position. For example, the initial position is given below, as well as an empty
-board and a position following white's failure to find the "computer move" in
-the Ulvestad variation.
+position. For example, the initial position is given in the header as INIT_POS,
+as well as an empty board and a position following white's failure to find the 
+"computer move" in the Ulvestad variation.
 
 https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation
 
-*/
-
-#define INIT_POS "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "
-#define EMPTY_POS "8/8/8/8/8/8/8/8 b - - "
-#define TEST_POS                                                               \
-    "r1b1kb1r/p1p2ppp/2n2n2/1B2p1N1/2P5/8/PP1P1PqP/RNBQK2R w KQkq - 0 1"
-
-/*
-
 To map between bitboards and FEN, we simply parse through the FEN string and
 update each bitboard, given a few rules about FEN strings. Once a space is
-encountered, we end the parsing. Below is also a string of the piece characters,
+encountered, we end the parsing. In the header is also a string of the piece characters,
 which we'll use to access the piece bitboards.
 
-Later, we'll want to implement castling and turn bitboards, so we'll need to come back
-and add more functionality to the parser.
+Besides the bitboards, we also want to keep track of five more things:
+- Whose turn it is
+- Castling rights (kingside/queenside, per color)
+- En passant captures (if the previous move was a 2-square pawn move, then the intermediate square)
+- The number of halfmoves (single player moves) since a capture or pawn advance, for the 50
+  move rule
+- The number of total moves
 
+The latter portion of the FEN string covers all of these.
 */
 
-#define PIECE_MAP "PpNnBbRrQqKk"
+// 0 = white, 1 = black
+int whose_turn;
+// Flags: (0 or nonzero, in order WKQWbkbq)
+int castling[4];
+// Must be between 0 and 63, for how much to bit-shift a 1 to the left to get the position bit-vector.
+// This means that 0 is the bottom-right corner and 63 is the top left, moving left down the row
+// before up a column
+int en_passant;
+int halfmove_counter;
+int moves;
 
-void clear_bitboards() {
+// Helper to print the extras mentioned above
+void print_extras() {
+	if (whose_turn) {
+		printf("Black to play\n");
+	} else {
+		printf("White to play\n");
+	}
+	if (castling[0]) {
+		printf("White may castle kingside\n");
+	}
+	if (castling[1]) {
+		printf("White may castle queenside\n");
+	}
+	if (castling[2]) {
+		printf("Black may castle kingside\n");
+	}
+	if (castling[3]) {
+		printf("Black may castle queenside\n");
+	}
+	if (en_passant > -1) {
+		printf("The en-passant square is at %i\n", en_passant);
+	}
+	printf("There have been %i halfmoves since the last pawn move or capture\n", halfmove_counter);
+	printf("There have been %i total moves this game\n", moves);
+}
+
+// Set the bitboards to 0 before entering FEN information
+static void clear_bitboards() {
 	for (int i = 0; i < 12; i++) {
 		piece_bb[i] = (U64)0;
 	}
@@ -144,8 +176,109 @@ void clear_bitboards() {
 	all_bb = (U64)0;
 }
 
+char *castle_map = "KQkq";
+
+// Parses only the string after the squares in a FEN string
+// (Warning: very ugly)
+static int parse_extras(char *inp, int idx) {
+	// First, copy the fen to a bigger buffer to avoid faults
+	char fen[400];
+	strcpy(fen, inp);
+	// Next, our idx should move past the space
+	idx++;
+	// Find whose turn it is
+	if (fen[idx] == 'w') {
+		whose_turn = 0;
+	} else if (fen[idx] == 'b') {
+		whose_turn = 1;
+	} else {
+		return 1;
+	}
+	idx += 1;
+	if (fen[idx] != ' ') return 1;
+	idx += 1;
+	// Now check for - or k/q chars
+	for (int i = 0; i < 4; i++) {
+		castling[i] = 0;
+	}
+	if (fen[idx] == '-') {
+		idx += 1;
+		if (fen[idx] != ' ') return 1;
+		idx += 1;
+	} else if (fen[idx] == ' '){
+		return 1;
+	} else {
+		do {
+			char *piece = strchr(castle_map, fen[idx]);
+			if (piece) {
+				// Locate idx in castlemap
+				int index = (int)(piece - castle_map);
+				castling[index] = 1;
+			} else if (fen[idx] == ' ') {
+				idx += 1;
+				break;
+			} else {
+				return 1;
+			}
+			idx += 1;
+		} while (1);
+	}
+	// Now get en-passant square
+	en_passant = 0;
+	if (fen[idx] == '-') {
+		idx += 1;
+		if (fen[idx] != ' ') return 1;
+		idx += 1;
+	} else if (fen[idx] == ' '){
+		return 1;
+	} else {
+		if (!isdigit(fen[idx])) {
+			return 1;
+		}
+		// Extract the number
+		while (isdigit(fen[idx])) {
+			en_passant = (en_passant * 10) + (fen[idx] - '0');
+			idx++;
+		}
+		if (fen[idx] != ' ') {
+			return 1;
+		} else {
+			idx++;
+		}
+	}
+	// Now get halfmoves
+	if (!isdigit(fen[idx])) {
+			return 1;
+	}
+	// Extract the number
+	while (isdigit(fen[idx])) {
+		halfmove_counter = (halfmove_counter * 10) + (fen[idx] - '0');
+		idx++;
+	}
+	if (fen[idx] != ' ') {
+		return 1;
+	} else {
+		idx++;
+	}
+	// Now get full moves (turns)
+	if (!isdigit(fen[idx])) {
+			return 1;
+	}
+	// Extract the number
+	while (isdigit(fen[idx])) {
+		moves = (moves * 10) + (fen[idx] - '0');
+		idx++;
+	}
+	if (idx != strlen(fen)-1) {
+		return 1;
+	}
+	return 0;
+}
+
+// Parses an entire FEN
 int parse_fen(char *fen) {
 	// first, clear the bitboards
+	// this means that trying parse_fen is NOT rewindable!
 	clear_bitboards();
 	// start position is a 1 in the far left bit
     U64 pos = (U64)1 << 63;
@@ -156,8 +289,7 @@ int parse_fen(char *fen) {
 			continue;
 		}
 		// if number, move position by this many to the right
-		int num = ch - 48;
-		if ((0 < num) && (num <= 8)) {
+		else if ((0 < (ch - 48)) && ((ch - 48) <= 8)) {
 			// make sure that we don't get multi-digit numbers
 			if (idx != strlen(fen) - 1) {
 				int num2 = fen[idx + 1] - 48;
@@ -166,13 +298,10 @@ int parse_fen(char *fen) {
 				}
 			}
 			// move by allowable num
-			pos >>= num;
+			pos >>= (ch - 48);
 			continue;
-		} else if ((num == 0) || (num == 9)) {
-			// not allowable
-			return 1;
 		}
-		// if piece, find occurence of current character in piecemap and update
+		// if piece,find occurence of current character in piecemap and update
 		char *piece = strchr(PIECE_MAP, ch);
 		if (piece) {
 			// Locate idx in piecemap
@@ -181,15 +310,17 @@ int parse_fen(char *fen) {
 			piece_bb[index] ^= pos;
 			color_bb[(index % 2)] ^= pos;
 			all_bb ^= pos;
-		}
+		// if space, reached extras section. certain letters are reused, so
+		// we need a new conditional branch
+		} else if (ch == ' ') {
+			return parse_extras(fen, idx);
 		// for any other character return 1 for error: bad FEN string
-		else {
+		} else {
 			return 1;
 		}
 		pos >>= 1;
 	}
-	// only a valid FEN if we iterated thru 64 squares, return 1 for bad FEN string
-	return (!!pos);
+	return 0;
 }
 
 /*
@@ -216,6 +347,7 @@ tan, to match the chess.com color scheme.
 char *unicode_pieces[12] = {"♙ ", "♞ ", "♝ ", "♜ ", "♛ ", "♚ "};
 
 void print_board() {
+	printf("\n");
     // start position is a 1 in the far left bit
     U64 pos = (U64)1 << 63;
     // we choose to make rows the "slow" axis, columns the "fast" axis
@@ -229,12 +361,11 @@ void print_board() {
                 bg = bbg;
             }
 			// if no piece, continue, else color the piece
-			char *txt;
-			char *piece;
+			char *txt = wtxt;
+			// If no piece, print double-wide space
+			char *piece = "  ";
 			if (pos & all_bb) {
-				if (pos & color_bb[0]) {
-					txt = wtxt;
-				} else if (pos & color_bb[1]) {
+				if (pos & color_bb[1]) {
 					txt = btxt;
 				}
 				// Find which piece
@@ -244,9 +375,6 @@ void print_board() {
 						break;
 					}
 				}
-			} else {
-				// No piece, print double-wide space
-				piece = "  ";
 			}
             // Formatting followed by piece
             printf("%s%s%s%s",txt,bg,piece,reset_txt);
@@ -260,28 +388,20 @@ void print_board() {
     printf("   A B C D E F G H \n\n");
 }
 
-int main() {
-    init_board();
-    // test all bitboards
-    for (int i = 0; i < 12; i++) {
+// It will also be useful to print all bitboards from the command line
+void print_all_bitboards() {
+	for (int i = 0; i < 12; i++) {
         char *color = "white";
         if (i % 2) {
             color = "black";
         }
-        printf("Testing the %s %s:\n\n", color, unicode_pieces[i / 2]);
+        printf("The %s %s:\n\n", color, unicode_pieces[i / 2]);
         print_bitboard(piece_bb[i]);
     }
-    printf("Testing white pieces:\n\n");
+    printf("All white pieces:\n\n");
     print_bitboard(color_bb[0]);
-    printf("Testing black pieces:\n\n");
+    printf("All black pieces:\n\n");
     print_bitboard(color_bb[1]);
-    printf("Testing all pieces:\n\n");
+    printf("All pieces:\n\n");
     print_bitboard(all_bb);
-    // test printing board
-    print_board();
-	// try out test boards
-	parse_fen(INIT_POS);
-	print_board();
-	parse_fen(TEST_POS);
-	print_board();
 }

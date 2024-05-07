@@ -1,2 +1,5 @@
 all:
-	gcc -O2 bitboards.c -o bitboards.o
+	gcc -O2 main.c -o run
+
+clean:
+	rm -f run
