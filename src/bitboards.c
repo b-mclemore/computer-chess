@@ -1,8 +1,8 @@
+#include "chess.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
-#include "chess.h"
 
 /*
   _______________________________________
@@ -44,364 +44,89 @@ The 8x8 chess board can conveniently be expressed as a collection of 64-bit
 Computer chess hobbyists like to define such a 64-bit board as a U64, and we
 need 12 piece bitboards: a pair for pawns, knights, bishops, rooks, queens, and
 kings. We'll also want 2 color bitboards, and a bitboard to track every piece.
-*/
 
-U64 piece_bb[12];
-U64 color_bb[2];
-U64 all_bb;
+The struct for these bitboards lives in "game_state", which is defined in chess.h
+We pass a pointer to a game_state to each of the following functions in order to pass
+information about the bitboards, whose names appear below
 
-// It will be useful to have a bitboard printer as a debugging tool, which we'll
-// define here. It's pretty naive, just iterating through the bits and printing
-// 1 or 0.
-static void print_bitboard(U64 bitboard) {
-    // start position is a 1 in the far left bit
-    U64 start = (U64)1 << 63;
-    // we choose to make rows the "slow" axis, columns the "fast" axis
-    for (int row = 0; row < 8; row++) {
-        // print num for row
-        printf("%i  ", 8 - row);
-        for (int col = 0; col < 8; col++) {
-            start &bitboard ? printf("[]") : printf("  ");
-            start >>= 1;
-        }
-        printf("\n");
-    }
-    printf("\n");
-    // print letter for cols
-    printf("   A B C D E F G H \n\n");
-}
-
-// Initialize board: these are the representations of the initial piece
-// positions. The bitboard printer above can be used to check them out.
-void init_board() {
-    // We define pieces bitboards in the following order:
-    // white then black (so we can %2 later), in "point" order, bishops
-    // considered higher points than knights pawns
-    piece_bb[0] = (U64)0b11111111 << 8;
-    piece_bb[1] = (U64)0b11111111 << 48;
-    // knights
-    piece_bb[2] = (U64)0b01000010;
-    piece_bb[3] = (U64)0b01000010 << 56;
-    // bishops
-    piece_bb[4] = (U64)0b00100100;
-    piece_bb[5] = (U64)0b00100100 << 56;
-    // rooks
-    piece_bb[6] = (U64)0b10000001;
-    piece_bb[7] = (U64)0b10000001 << 56;
-    // queens
-    piece_bb[8] = (U64)0b00010000;
-    piece_bb[9] = (U64)0b00010000 << 56;
-    // kings
-    piece_bb[10] = (U64)0b00001000;
-    piece_bb[11] = (U64)0b00001000 << 56;
-
-    // white pieces
-    color_bb[0] = (U64)0b1111111111111111;
-    // black pieces
-    color_bb[1] = (U64)0b1111111111111111 << 48;
-
-    // all pieces
-    all_bb = color_bb[0] ^ color_bb[1];
-}
-
-/*
-
-FEN is a useful "human-readable" notation for giving the engine a particular
-position. For example, the initial position is given in the header as INIT_POS,
-as well as an empty board and a position following white's failure to find the 
-"computer move" in the Ulvestad variation.
-
-https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation
-
-To map between bitboards and FEN, we simply parse through the FEN string and
-update each bitboard, given a few rules about FEN strings. Once a space is
-encountered, we end the parsing. In the header is also a string of the piece characters,
-which we'll use to access the piece bitboards.
+U64 piece_bb[12]; 	(The pairs of boards for each piece)
+U64 color_bb[2];	(The pair of color boards)
+U64 all_bb;			(The board for all pieces)
 
 Besides the bitboards, we also want to keep track of five more things:
 - Whose turn it is
 - Castling rights (kingside/queenside, per color)
-- En passant captures (if the previous move was a 2-square pawn move, then the intermediate square)
-- The number of halfmoves (single player moves) since a capture or pawn advance, for the 50
-  move rule
+- En passant captures (if the previous move was a 2-square pawn move, then the
+intermediate square)
+- The number of halfmoves (single player moves) since a capture or pawn advance,
+for the 50 move rule
 - The number of total moves
 
-The latter portion of the FEN string covers all of these.
+These all also appear in game_state as the following:
+- whose_turn
+- castling[4]
+- en_passant
+- halfmove_counter
+- moves
+
 */
 
-// 0 = white, 1 = black
-int whose_turn;
-// Flags: (0 or nonzero, in order WKQWbkbq)
-int castling[4];
-// Must be between 0 and 63, for how much to bit-shift a 1 to the left to get the position bit-vector.
-// This means that 0 is the bottom-right corner and 63 is the top left, moving left down the row
-// before up a column
-int en_passant;
-int halfmove_counter;
-int moves;
+// Initialize board: these are the representations of the initial piece
+// positions. The bitboard printer above can be used to check them out.
+void init_board(game_state *gs) {
+    // We define pieces bitboards in the following order:
+    // white then black (so we can %2 later), in "point" order, bishops
+    // considered higher points than knights pawns
+    gs->piece_bb[0] = (U64)0b11111111 << 8;
+    gs->piece_bb[1] = (U64)0b11111111 << 48;
+    // knights
+    gs->piece_bb[2] = (U64)0b01000010;
+    gs->piece_bb[3] = (U64)0b01000010 << 56;
+    // bishops
+    gs->piece_bb[4] = (U64)0b00100100;
+    gs->piece_bb[5] = (U64)0b00100100 << 56;
+    // rooks
+    gs->piece_bb[6] = (U64)0b10000001;
+    gs->piece_bb[7] = (U64)0b10000001 << 56;
+    // queens
+    gs->piece_bb[8] = (U64)0b00010000;
+    gs->piece_bb[9] = (U64)0b00010000 << 56;
+    // kings
+    gs->piece_bb[10] = (U64)0b00001000;
+    gs->piece_bb[11] = (U64)0b00001000 << 56;
 
-// Helper to print the extras mentioned above
-void print_extras() {
-	if (whose_turn) {
-		printf("Black to play\n");
-	} else {
-		printf("White to play\n");
-	}
-	if (castling[0]) {
-		printf("White may castle kingside\n");
-	}
-	if (castling[1]) {
-		printf("White may castle queenside\n");
-	}
-	if (castling[2]) {
-		printf("Black may castle kingside\n");
-	}
-	if (castling[3]) {
-		printf("Black may castle queenside\n");
-	}
-	if (en_passant > -1) {
-		printf("The en-passant square is at %i\n", en_passant);
-	}
-	printf("There have been %i halfmoves since the last pawn move or capture\n", halfmove_counter);
-	printf("There have been %i total moves this game\n", moves);
+    // white pieces
+    gs->color_bb[0] = (U64)0b1111111111111111;
+    // black pieces
+    gs->color_bb[1] = (U64)0b1111111111111111 << 48;
+
+    // all pieces
+    gs->all_bb = gs->color_bb[0] ^ gs->color_bb[1];
+
+	// extras
+	gs->whose_turn = 0;
+	gs->en_passant = 0;
+	gs->halfmove_counter = 0;
+	gs->moves = 0;
+	for (int i = 0; i < 4; i++) {
+        gs->castling[i] = 1;
+    }
+
 }
 
 // Set the bitboards to 0 before entering FEN information
-static void clear_bitboards() {
-	for (int i = 0; i < 12; i++) {
-		piece_bb[i] = (U64)0;
-	}
-	color_bb[0] = (U64)0;
-	color_bb[1] = (U64)0;
-	all_bb = (U64)0;
-}
-
-char *castle_map = "KQkq";
-
-// Parses only the string after the squares in a FEN string
-// (Warning: very ugly)
-static int parse_extras(char *inp, int idx) {
-	// First, copy the fen to a bigger buffer to avoid faults
-	char fen[400];
-	strcpy(fen, inp);
-	// Next, our idx should move past the space
-	idx++;
-	// Find whose turn it is
-	if (fen[idx] == 'w') {
-		whose_turn = 0;
-	} else if (fen[idx] == 'b') {
-		whose_turn = 1;
-	} else {
-		return 1;
-	}
-	idx += 1;
-	if (fen[idx] != ' ') return 1;
-	idx += 1;
-	// Now check for - or k/q chars
+static void clear_bitboards(game_state *gs) {
+    for (int i = 0; i < 12; i++) {
+        gs->piece_bb[i] = (U64)0;
+    }
+    gs->color_bb[0] = (U64)0;
+    gs->color_bb[1] = (U64)0;
+    gs->all_bb = (U64)0;
+	gs->whose_turn = 0;
+	gs->en_passant = 0;
+	gs->halfmove_counter = 0;
+	gs->moves = 0;
 	for (int i = 0; i < 4; i++) {
-		castling[i] = 0;
-	}
-	if (fen[idx] == '-') {
-		idx += 1;
-		if (fen[idx] != ' ') return 1;
-		idx += 1;
-	} else if (fen[idx] == ' '){
-		return 1;
-	} else {
-		do {
-			char *piece = strchr(castle_map, fen[idx]);
-			if (piece) {
-				// Locate idx in castlemap
-				int index = (int)(piece - castle_map);
-				castling[index] = 1;
-			} else if (fen[idx] == ' ') {
-				idx += 1;
-				break;
-			} else {
-				return 1;
-			}
-			idx += 1;
-		} while (1);
-	}
-	// Now get en-passant square
-	en_passant = 0;
-	if (fen[idx] == '-') {
-		idx += 1;
-		if (fen[idx] != ' ') return 1;
-		idx += 1;
-	} else if (fen[idx] == ' '){
-		return 1;
-	} else {
-		if (!isdigit(fen[idx])) {
-			return 1;
-		}
-		// Extract the number
-		while (isdigit(fen[idx])) {
-			en_passant = (en_passant * 10) + (fen[idx] - '0');
-			idx++;
-		}
-		if (fen[idx] != ' ') {
-			return 1;
-		} else {
-			idx++;
-		}
-	}
-	// Now get halfmoves
-	if (!isdigit(fen[idx])) {
-			return 1;
-	}
-	// Extract the number
-	while (isdigit(fen[idx])) {
-		halfmove_counter = (halfmove_counter * 10) + (fen[idx] - '0');
-		idx++;
-	}
-	if (fen[idx] != ' ') {
-		return 1;
-	} else {
-		idx++;
-	}
-	// Now get full moves (turns)
-	if (!isdigit(fen[idx])) {
-			return 1;
-	}
-	// Extract the number
-	while (isdigit(fen[idx])) {
-		moves = (moves * 10) + (fen[idx] - '0');
-		idx++;
-	}
-	if (idx != strlen(fen)-1) {
-		return 1;
-	}
-	return 0;
-}
-
-// Parses an entire FEN
-int parse_fen(char *fen) {
-	// first, clear the bitboards
-	// this means that trying parse_fen is NOT rewindable!
-	clear_bitboards();
-	// start position is a 1 in the far left bit
-    U64 pos = (U64)1 << 63;
-	for (int idx = 0; idx < strlen(fen); idx++) {
-		char ch = fen[idx];
-		// if /, do nothing
-		if (ch == '/') {
-			continue;
-		}
-		// if number, move position by this many to the right
-		else if ((0 < (ch - 48)) && ((ch - 48) <= 8)) {
-			// make sure that we don't get multi-digit numbers
-			if (idx != strlen(fen) - 1) {
-				int num2 = fen[idx + 1] - 48;
-				if ((0 < num2) && (num2 < 10)) {
-					return 1;
-				}
-			}
-			// move by allowable num
-			pos >>= (ch - 48);
-			continue;
-		}
-		// if piece,find occurence of current character in piecemap and update
-		char *piece = strchr(PIECE_MAP, ch);
-		if (piece) {
-			// Locate idx in piecemap
-			int index = (int)(piece - PIECE_MAP);
-			// Set position in piece, color, and overall bitboards
-			piece_bb[index] ^= pos;
-			color_bb[(index % 2)] ^= pos;
-			all_bb ^= pos;
-		// if space, reached extras section. certain letters are reused, so
-		// we need a new conditional branch
-		} else if (ch == ' ') {
-			return parse_extras(fen, idx);
-		// for any other character return 1 for error: bad FEN string
-		} else {
-			return 1;
-		}
-		pos >>= 1;
-	}
-	return 0;
-}
-
-/*
-
-Finally, we introduce a "GUI" (sort of). Unicode has kindly given us every
-chess piece, so we can use the command line to play, but Windows can't render
-the black pawn piece correctly. Therefore (since I have a PC) we'll need to paint
-the pieces black, and use a different square color. I've chosen green and
-tan, to match the chess.com color scheme.
-
-*/
-
-// Black background is dark green, white is tan
-#define bbg "\x1b[42m"
-#define wbg "\x1b[43m"
-// White text and black text
-#define wtxt "\x1b[97m"
-#define btxt "\x1b[30m"
-// Reset
-#define reset_txt "\x1b[0m"
-
-// Most fonts have unicode pieces doublewide, so we add a space so that they
-// don't get chopped in the command line
-char *unicode_pieces[12] = {"♙ ", "♞ ", "♝ ", "♜ ", "♛ ", "♚ "};
-
-void print_board() {
-	printf("\n");
-    // start position is a 1 in the far left bit
-    U64 pos = (U64)1 << 63;
-    // we choose to make rows the "slow" axis, columns the "fast" axis
-    for (int row = 0; row < 8; row++) {
-        // print num for row
-        printf("%i  ", 8 - row);
-        for (int col = 0; col < 8; col++) {
-            // Set background color
-            char *bg = wbg;
-            if ((row + col) % 2) {
-                bg = bbg;
-            }
-			// if no piece, continue, else color the piece
-			char *txt = wtxt;
-			// If no piece, print double-wide space
-			char *piece = "  ";
-			if (pos & all_bb) {
-				if (pos & color_bb[1]) {
-					txt = btxt;
-				}
-				// Find which piece
-				for (int pc_idx = 0; pc_idx < 12; pc_idx++) {
-					if (pos & piece_bb[pc_idx]) {
-						piece = unicode_pieces[pc_idx / 2];
-						break;
-					}
-				}
-			}
-            // Formatting followed by piece
-            printf("%s%s%s%s",txt,bg,piece,reset_txt);
-			// Iterate to next bitboard bit
-            pos >>= 1;
-        }
-        printf("\n");
+        gs->castling[i] = 0;
     }
-    printf("\n");
-    // print letter for cols
-    printf("   A B C D E F G H \n\n");
-}
-
-// It will also be useful to print all bitboards from the command line
-void print_all_bitboards() {
-	for (int i = 0; i < 12; i++) {
-        char *color = "white";
-        if (i % 2) {
-            color = "black";
-        }
-        printf("The %s %s:\n\n", color, unicode_pieces[i / 2]);
-        print_bitboard(piece_bb[i]);
-    }
-    printf("All white pieces:\n\n");
-    print_bitboard(color_bb[0]);
-    printf("All black pieces:\n\n");
-    print_bitboard(color_bb[1]);
-    printf("All pieces:\n\n");
-    print_bitboard(all_bb);
 }
