@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 /*
   _______________________________________
@@ -122,16 +123,81 @@ https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation
 
 /*
 
-To map between bitboards and FEN, we ...
+To map between bitboards and FEN, we simply parse through the FEN string and
+update each bitboard, given a few rules about FEN strings. Once a space is
+encountered, we end the parsing. Below is also a string of the piece characters,
+which we'll use to access the piece bitboards.
+
+Later, we'll want to implement castling and turn bitboards, so we'll need to come back
+and add more functionality to the parser.
 
 */
+
+#define PIECE_MAP "PpNnBbRrQqKk"
+
+void clear_bitboards() {
+	for (int i = 0; i < 12; i++) {
+		piece_bb[i] = (U64)0;
+	}
+	color_bb[0] = (U64)0;
+	color_bb[1] = (U64)0;
+	all_bb = (U64)0;
+}
+
+int parse_fen(char *fen) {
+	// first, clear the bitboards
+	clear_bitboards();
+	// start position is a 1 in the far left bit
+    U64 pos = (U64)1 << 63;
+	for (int idx = 0; idx < strlen(fen); idx++) {
+		char ch = fen[idx];
+		// if /, do nothing
+		if (ch == '/') {
+			continue;
+		}
+		// if number, move position by this many to the right
+		int num = ch - 48;
+		if ((0 < num) && (num <= 8)) {
+			// make sure that we don't get multi-digit numbers
+			if (idx != strlen(fen) - 1) {
+				int num2 = fen[idx + 1] - 48;
+				if ((0 < num2) && (num2 < 10)) {
+					return 1;
+				}
+			}
+			// move by allowable num
+			pos >>= num;
+			continue;
+		} else if ((num == 0) || (num == 9)) {
+			// not allowable
+			return 1;
+		}
+		// if piece, find occurence of current character in piecemap and update
+		char *piece = strchr(PIECE_MAP, ch);
+		if (piece) {
+			// Locate idx in piecemap
+			int index = (int)(piece - PIECE_MAP);
+			// Set position in piece, color, and overall bitboards
+			piece_bb[index] ^= pos;
+			color_bb[(index % 2)] ^= pos;
+			all_bb ^= pos;
+		}
+		// for any other character return 1 for error: bad FEN string
+		else {
+			return 1;
+		}
+		pos >>= 1;
+	}
+	// only a valid FEN if we iterated thru 64 squares, return 1 for bad FEN string
+	return (!!pos);
+}
 
 /*
 
 Finally, we introduce a "GUI" (sort of). Unicode has kindly given us every
 chess piece, so we can use the command line to play, but Windows can't render
-the black pawn piece correctly. Therefore (since I have a PC we'll need to paint
-the white pieces black, and use a different square color. I've chosen green and
+the black pawn piece correctly. Therefore (since I have a PC) we'll need to paint
+the pieces black, and use a different square color. I've chosen green and
 tan, to match the chess.com color scheme.
 
 */
@@ -147,7 +213,7 @@ tan, to match the chess.com color scheme.
 
 // Most fonts have unicode pieces doublewide, so we add a space so that they
 // don't get chopped in the command line
-char *unicode_pieces[12] = {"♙ ", "♘ ", "♗ ", "♖ ", "♕ ", "♔ "};
+char *unicode_pieces[12] = {"♙ ", "♞ ", "♝ ", "♜ ", "♛ ", "♚ "};
 
 void print_board() {
     // start position is a 1 in the far left bit
@@ -191,7 +257,7 @@ void print_board() {
     }
     printf("\n");
     // print letter for cols
-    printf("   A B C D E F G H \n");
+    printf("   A B C D E F G H \n\n");
 }
 
 int main() {
@@ -213,4 +279,9 @@ int main() {
     print_bitboard(all_bb);
     // test printing board
     print_board();
+	// try out test boards
+	parse_fen(INIT_POS);
+	print_board();
+	parse_fen(TEST_POS);
+	print_board();
 }
