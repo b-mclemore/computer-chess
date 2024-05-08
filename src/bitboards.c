@@ -130,3 +130,141 @@ static void clear_bitboards(game_state *gs) {
         gs->castling[i] = 0;
     }
 }
+
+/*
+
+Next, we want to use bitboard logic to reason about the current game, for example knight or rook
+moves, as well as more complex structures like passed pawns or a protected king.
+
+The set of legal moves is required to play the game, while the complex structures are needed to
+evaluate a position: for example, if white is down a pawn but has a passed pawn, this is a better
+position than without a passed pawn.
+
+We'll want these functions to run extremely quick, since when we evaluate a position we need to
+look multiple moves in the future, so the number of times we use the reasoning functions will
+grow exponentially. Where possible, I've tried to use vector intrinsics (SIMD functions) to
+speed up the program.
+
+The logically most simple move (though not necessarily for a human) is the knight moves, which
+we calculate here. We take in the knight bitboard and return all possible (though not necessarily
+legal) knight moves. You'll notice that we need to define a few consts here to assis with the
+computation. For example, when we shift to the left before moving down to look at a south-west
+knight move, we need to make sure we haven't rolled over to the next row.
+
+*/
+
+C64 notA = 0xfefefefefefefefe;
+C64 notAB = 0xfcfcfcfcfcfcfcfc;
+C64 notH = 0x7f7f7f7f7f7f7f7f;
+C64 notGH = 0x3f3f3f3f3f3f3f3f;
+
+// Takes knight bb and returns knight attacks
+U64 knightAttacks(U64 knight_bb) {
+    // (move once L/R and twice U/D, or twice L/R once U/D)
+    // generate L/R once and L/R twice
+    U64 l1 = (knight_bb << 1) & notA;
+    U64 l2 = (knight_bb << 2) & notAB;
+    U64 r1 = (knight_bb >> 1) & notH;
+    U64 r2 = (knight_bb >> 2) & notGH;
+    // pack together and move once or twice U/D
+    U64 h1 = l1 | r1;
+    U64 h2 = l2 | r2;
+    return (h1 >> 16) | (h2 >> 8) | (h1 << 16) | (h2 << 8);
+}
+
+/* 
+
+Next, we add pawn moves, which are almost as simple, except for the case that a pawn can move twice
+from its opening square. Pawn attacks have two branches: the left and right attacks. Since we assume
+that black is always on top (opposite white), we need to have separate calculators for black and white.
+
+*/
+
+U64 wpLeftAttacks(U64 pawn_bb) {
+    return (pawn_bb << 9) & notA;
+}
+
+U64 wpRightAttacks(U64 pawn_bb) {
+    return (pawn_bb << 7) & notH;
+}
+
+U64 wpAttacks(U64 pawn_bb) {
+    return (wpLeftAttacks(pawn_bb) | wpRightAttacks(pawn_bb));
+}
+
+U64 bpLeftAttacks(U64 pawn_bb) {
+    return (pawn_bb >> 7) & notA;
+}
+
+U64 bpRightAttacks(U64 pawn_bb) {
+    return (pawn_bb >> 9) & notH;
+}
+
+U64 bpAttacks(U64 pawn_bb) {
+    return (bpLeftAttacks(pawn_bb) | bpRightAttacks(pawn_bb));
+}
+
+U64 wpSinglePushes(U64 pawn_bb) {
+    return (pawn_bb << 8);
+}
+
+U64 wpDoublePushes(U64 pawn_bb) {
+    // Needs to originate from 2nd rank
+    C64 rank2 = (C64)0x000000000000FF00;
+    return ((pawn_bb & rank2) << 16);
+}
+
+U64 wpPushes(U64 pawn_bb) {
+    return (wpSinglePushes(pawn_bb) | wpDoublePushes(pawn_bb));
+}
+
+U64 bpSinglePushes(U64 pawn_bb) {
+    return (pawn_bb >> 8);
+}
+
+U64 bpDoublePushes(U64 pawn_bb) {
+    // Needs to originate from 7th rank
+    C64 rank7 = (C64)0x00FF000000000000;
+    return ((pawn_bb & rank7) >> 16);
+}
+
+U64 bpPushes(U64 pawn_bb) {
+    return (bpSinglePushes(pawn_bb) | bpDoublePushes(pawn_bb));
+}
+
+/*
+
+Now, king moves: for now we'll ignore checks and just generate all moves for the king, 
+which are easy enough to calculate. We simply move once in every lateral/diagonal direction
+and prevent wrap-around
+
+*/
+
+// King moves: just once in any direction
+U64 kingAttacks(U64 king_bb) {
+    // The forward and backward moves are the same as single pawn pushes and diagonal attacks
+    U64 back = (bpSinglePushes(king_bb) | bpAttacks(king_bb));
+    U64 forw = (wpSinglePushes(king_bb) | wpAttacks(king_bb));
+    U64 left = ((king_bb & notA) << 1);
+    U64 rght = ((king_bb & notH) >> 1);
+    return (back | forw | left | rght);
+}
+
+/*
+
+More difficult are the sliding pieces: the bishops, rooks, and queens. Luckily, a queen is simply a
+"bishop-rook". That is, its moves are the union of moves a rook and bishop could make from the same
+square, which simplifies things. We split the functions into eight directions: four lateral, and
+four diagonal.
+
+*/
+
+/*
+
+The real difficulty in moving sliding pieces is their obstructions. To find legal moves for the non-
+sliders, we simply bitwise & the opposite color piece boards to find captures, but here we need
+to halt a sliding piece when it captures; no hopping is allowed.
+
+To do so, we need to use some bit tricks. 
+
+*/

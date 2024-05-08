@@ -33,6 +33,7 @@
 */
 
 #define U64 unsigned long long
+#define C64 const U64
 /* utility macro for malloc() (memory allocation on the heap) for N things of type T,
    and casting to T* type */
 #define MALLOC(N, T) (T *)(malloc((N) * sizeof(T)))
@@ -71,6 +72,7 @@ extern int parse_fen(game_state *gs, char *fen);
 extern void print_board(game_state *gs);
 extern void print_all_bitboards(game_state *gs);
 extern void print_extras(game_state *gs);
+extern U64 knightAttacks(U64 knight_bb);
 
 /*
 ===========================================

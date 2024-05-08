@@ -33,7 +33,19 @@
 // It will be useful to have a bitboard printer as a debugging tool, which we'll
 // define here. It's pretty naive, just iterating through the bits and printing
 // 1 or 0.
-static void print_bitboard(U64 bitboard) {
+// We also want to color the board, which we do by printing the codes below
+
+// Black background is dark green, white is tan
+#define bbg "\x1b[42m"
+#define wbg "\x1b[43m"
+// White text and black text
+#define wtxt "\x1b[97m"
+#define btxt "\x1b[30m"
+// Reset
+#define reset_txt "\x1b[0m"
+static void print_bitboard(U64 bitboard, int color) {
+    char *txt = wtxt;
+    if (color) txt = btxt;
     // start position is a 1 in the far left bit
     U64 start = (U64)1 << 63;
     // we choose to make rows the "slow" axis, columns the "fast" axis
@@ -41,7 +53,14 @@ static void print_bitboard(U64 bitboard) {
         // print num for row
         printf("%i  ", 8 - row);
         for (int col = 0; col < 8; col++) {
+            // Set background color
+            char *bg = wbg;
+            if ((row + col) % 2) {
+                bg = bbg;
+            }
+            printf("%s%s",bg,txt);
             start &bitboard ? printf("[]") : printf("  ");
+            printf("%s", reset_txt);
             start >>= 1;
         }
         printf("\n");
@@ -250,15 +269,6 @@ tan, to match the chess.com color scheme.
 
 */
 
-// Black background is dark green, white is tan
-#define bbg "\x1b[42m"
-#define wbg "\x1b[43m"
-// White text and black text
-#define wtxt "\x1b[97m"
-#define btxt "\x1b[30m"
-// Reset
-#define reset_txt "\x1b[0m"
-
 // Most fonts have unicode pieces doublewide, so we add a space so that they
 // don't get chopped in the command line
 char *unicode_pieces[12] = {"♙ ", "♞ ", "♝ ", "♜ ", "♛ ", "♚ "};
@@ -313,14 +323,48 @@ void print_all_bitboards(game_state *gs) {
             color = "black";
         }
         printf("The %s %s:\n\n", color, unicode_pieces[i / 2]);
-        print_bitboard(gs->piece_bb[i]);
+        print_bitboard(gs->piece_bb[i], i%2);
     }
     printf("All white pieces:\n\n");
-    print_bitboard(gs->color_bb[0]);
+    print_bitboard(gs->color_bb[0], 0);
     printf("All black pieces:\n\n");
-    print_bitboard(gs->color_bb[1]);
+    print_bitboard(gs->color_bb[1], 1);
     printf("All pieces:\n\n");
-    print_bitboard(gs->all_bb);
+    print_bitboard(gs->all_bb, 0);
+}
+
+/*
+
+In order to accept a move, we need to be able to read long algebraic notation (which matches
+UCI standards). For example, e2e4 is the most common opening move.
+
+*/
+
+// Long algebraic notation parser
+
+/*
+
+In order to read a piece (if we want to view bitboards) we write a short helper function
+here to match the piece.
+
+*/
+
+// Matches a piece to its //2 index in the gamestate bitboard list
+int parse_piece(char piece) {
+    if ((piece == 'p') || (piece == 'P')) return 0;
+    else if ((piece == 'n') || (piece == 'N')) return 1;
+    else if ((piece == 'b') || (piece == 'B')) return 2;
+    else if ((piece == 'r') || (piece == 'R')) return 3;
+    else if ((piece == 'q') || (piece == 'Q')) return 4;
+    else if ((piece == 'k') || (piece == 'K')) return 5;
+    else return -1;
+}
+
+// Matches a color to w->0, b->1
+int parse_color(char color) {
+    if ((color == 'w') || (color == 'W')) return 0;
+    else if ((color == 'b') || (color == 'B')) return 1;
+    else return -1;
 }
 
 /*
@@ -364,8 +408,8 @@ int parse_input(game_state *gs) {
         printf("-ab\t\t:\tprints all bitboards\n");
         printf("-ex\t\t:\tlists the extras: whose move, castling "
                "rights,\n\t\t\ten-passant square, and number of moves\n");
-        printf("-moves\t\t:\tlists possible moves, ordered by evaluation "
-               "(unimplemented)\n");
+        printf("-moves\t\t:\tshow move bitboards for a piece, semi-algebraically.\n"
+               "\t\t\t(WN for white knight, BR for black rook, etc)\n");
         return -1;
     }
     // print board for debugging
@@ -397,6 +441,37 @@ int parse_input(game_state *gs) {
             }
         }
         return 1;
+    }
+    // show move bitboards
+    else if (!strncmp(input, "-moves", 6)) {
+        if (strlen(input) != 10) {
+            // must be exactly two characters
+            printf("Code must be two characters. Try WN for white knight or BR for black rook.\n");
+        } else {
+            int color = parse_color(input[7]);
+            int piece = parse_piece(input[8]);
+            if (piece == -1) {
+                printf("Not a valid piece. Try WN for white knight or BR for black rook.\n");
+            }
+            if (color == -1) {
+                printf("Not a valid color. Try WN for white knight or BR for black rook.\n");
+            }
+            U64 piece_bb = gs->piece_bb[2 * piece + color];
+            if (piece == 0) {
+                if (color) {
+                    print_bitboard(bpPushes(piece_bb) | bpAttacks(piece_bb), color);
+                } else {
+                    print_bitboard(wpPushes(piece_bb) | wpAttacks(piece_bb), color);
+                }
+            } else if (piece == 1) {
+                print_bitboard(knightAttacks(piece_bb), color);
+            } else if (piece == 5) {
+                print_bitboard(kingAttacks(piece_bb), color);
+            } else {
+                printf("We haven't implemented this piece's moves yet, sorry!\n");
+            }
+        }
+        return -1;
     }
     // default
     else {
