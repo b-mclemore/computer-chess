@@ -335,15 +335,6 @@ void print_all_bitboards(game_state *gs) {
 
 /*
 
-In order to accept a move, we need to be able to read long algebraic notation (which matches
-UCI standards). For example, e2e4 is the most common opening move.
-
-*/
-
-// Long algebraic notation parser
-
-/*
-
 In order to read a piece (if we want to view bitboards) we write a short helper function
 here to match the piece.
 
@@ -365,6 +356,57 @@ int parse_color(char color) {
     if ((color == 'w') || (color == 'W')) return 0;
     else if ((color == 'b') || (color == 'B')) return 1;
     else return -1;
+}
+
+/*
+
+Now, a function to read "long" algebraic notation. This notation simply gives the originating
+and target square: for example, e2e4 is the most popular opening move. Therefore we need to
+do two things: check legality, and change the bitboards. These already exist in bitboards.c,
+so really all we need to do is parse the input.
+
+*/
+
+int parse_move(char *input, game_state *gs) {
+    // We assume that the input is only 4 chars long (5 including newline)
+    if (strlen(input) != 5) {
+        printf("The command was not recognized, try again.\n");
+        return -1;
+    }
+    // Recall that h8 = 0 and a1 = 1 << 63 (bitboard) or 63 (array index)
+    // Therefore we treat rank as the slow axis and file as the fast, both with size 8, so:
+    // first, make sure string has form (letter)(digit)(letter)(digit), then
+    // move by 8 based on letters and 1 based on digits
+    int idx = 0;
+    // Form check: set to uppercase, where char A = 65, so subtract 65. Then must check every
+    // char in input to be in range (0, 8)
+    input[0] = toupper(input[0]) - 65;
+    input[2] = toupper(input[2]) - 65;
+    input[1] -= 49;
+    input[3] -= 49;
+    int form = 0;
+    for (int i = 0; i < 4; i++) {
+        form += ((input[i] < 0) || (8 < input[i]));
+    }
+    if (form) {
+        printf("The move given was not recognized.\n");
+        return -1;
+    }
+    // Now, check legality
+    int piece_idx = (7 - input[0]) + 8 * input[1];
+    int target_idx = (7 - input[2]) + 8 * input[3];
+    if (checkLegality(piece_idx, target_idx, gs)) {
+        makeMove(piece_idx, target_idx, gs);
+    } else {
+        printf("The move given was not legal.");
+        return -1;
+    }
+    // Now, update game state. (TODO: Change extras. Just updates move count and whose_turn now)
+    if (gs->whose_turn) {
+        gs->moves += 1;
+    }
+    gs->whose_turn = 1 - gs->whose_turn;
+    return 1;
 }
 
 /*
@@ -395,8 +437,8 @@ int parse_input(game_state *gs) {
     }
     // print available commands
     else if (!strncmp(input, "-help", 4)) {
-        printf("To make a legal move, use algebraic notation: ");
-        printf("For example, Nf4\n");
+        printf("To make a legal move, use long algebraic notation: ");
+        printf("For example, e2e4 for the e4 opening.\n");
         printf("\nUtilities:\n");
         printf("-setup [FEN]\t:\tstarts a new game from a given FEN "
                "string\n\t\t\t(WARNING: a malformed FEN will still restart the "
@@ -465,6 +507,12 @@ int parse_input(game_state *gs) {
                 }
             } else if (piece == 1) {
                 print_bitboard(knightAttacks(piece_bb), color);
+            } else if (piece == 2) {
+                print_bitboard(bishopAttacks(piece_bb, ~gs->all_bb), color);
+            } else if (piece == 3) {
+                print_bitboard(rookAttacks(piece_bb, ~gs->all_bb), color);
+            } else if (piece == 4) {
+                print_bitboard(queenAttacks(piece_bb, ~gs->all_bb), color);
             } else if (piece == 5) {
                 print_bitboard(kingAttacks(piece_bb), color);
             } else {
@@ -473,10 +521,9 @@ int parse_input(game_state *gs) {
         }
         return -1;
     }
-    // default
+    // default: try to make move
     else {
-        printf("Not a valid command\n");
-        return -1;
+        return parse_move(input, gs);
     }
     return 0;
 }
