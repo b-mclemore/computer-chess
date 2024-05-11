@@ -1,5 +1,5 @@
-#include "chess.h"
 #include "bitboards.c"
+#include "chess.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,7 +45,8 @@
 #define reset_txt "\x1b[0m"
 static void print_bitboard(U64 bitboard, int color) {
     char *txt = wtxt;
-    if (color) txt = btxt;
+    if (color)
+        txt = btxt;
     // start position is a 1 in the far left bit
     U64 start = (U64)1 << 63;
     // we choose to make rows the "slow" axis, columns the "fast" axis
@@ -58,7 +59,7 @@ static void print_bitboard(U64 bitboard, int color) {
             if ((row + col) % 2) {
                 bg = bbg;
             }
-            printf("%s%s",bg,txt);
+            printf("%s%s", bg, txt);
             start &bitboard ? printf("[]") : printf("  ");
             printf("%s", reset_txt);
             start >>= 1;
@@ -323,7 +324,7 @@ void print_all_bitboards(game_state *gs) {
             color = "black";
         }
         printf("The %s %s:\n\n", color, unicode_pieces[i / 2]);
-        print_bitboard(gs->piece_bb[i], i%2);
+        print_bitboard(gs->piece_bb[i], i % 2);
     }
     printf("All white pieces:\n\n");
     print_bitboard(gs->color_bb[0], 0);
@@ -335,35 +336,46 @@ void print_all_bitboards(game_state *gs) {
 
 /*
 
-In order to read a piece (if we want to view bitboards) we write a short helper function
-here to match the piece.
+In order to read a piece (if we want to view bitboards) we write a short helper
+function here to match the piece.
 
 */
 
 // Matches a piece to its //2 index in the gamestate bitboard list
 int parse_piece(char piece) {
-    if ((piece == 'p') || (piece == 'P')) return 0;
-    else if ((piece == 'n') || (piece == 'N')) return 1;
-    else if ((piece == 'b') || (piece == 'B')) return 2;
-    else if ((piece == 'r') || (piece == 'R')) return 3;
-    else if ((piece == 'q') || (piece == 'Q')) return 4;
-    else if ((piece == 'k') || (piece == 'K')) return 5;
-    else return -1;
+    if ((piece == 'p') || (piece == 'P'))
+        return 0;
+    else if ((piece == 'n') || (piece == 'N'))
+        return 1;
+    else if ((piece == 'b') || (piece == 'B'))
+        return 2;
+    else if ((piece == 'r') || (piece == 'R'))
+        return 3;
+    else if ((piece == 'q') || (piece == 'Q'))
+        return 4;
+    else if ((piece == 'k') || (piece == 'K'))
+        return 5;
+    else
+        return -1;
 }
 
 // Matches a color to w->0, b->1
 int parse_color(char color) {
-    if ((color == 'w') || (color == 'W')) return 0;
-    else if ((color == 'b') || (color == 'B')) return 1;
-    else return -1;
+    if ((color == 'w') || (color == 'W'))
+        return 0;
+    else if ((color == 'b') || (color == 'B'))
+        return 1;
+    else
+        return -1;
 }
 
 /*
 
-Now, a function to read "long" algebraic notation. This notation simply gives the originating
-and target square: for example, e2e4 is the most popular opening move. Therefore we need to
-do two things: check legality, and change the bitboards. These already exist in bitboards.c,
-so really all we need to do is parse the input.
+Now, a function to read "long" algebraic notation. This notation simply gives
+the originating and target square: for example, e2e4 is the most popular opening
+move. Therefore we need to do two things: check legality, and change the
+bitboards. These already exist in bitboards.c, so really all we need to do is
+parse the input.
 
 */
 
@@ -374,12 +386,13 @@ int parse_move(char *input, game_state *gs) {
         return -1;
     }
     // Recall that h8 = 0 and a1 = 1 << 63 (bitboard) or 63 (array index)
-    // Therefore we treat rank as the slow axis and file as the fast, both with size 8, so:
-    // first, make sure string has form (letter)(digit)(letter)(digit), then
-    // move by 8 based on letters and 1 based on digits
+    // Therefore we treat rank as the slow axis and file as the fast, both with
+    // size 8, so: first, make sure string has form
+    // (letter)(digit)(letter)(digit), then move by 8 based on letters and 1
+    // based on digits
     int idx = 0;
-    // Form check: set to uppercase, where char A = 65, so subtract 65. Then must check every
-    // char in input to be in range (0, 8)
+    // Form check: set to uppercase, where char A = 65, so subtract 65. Then
+    // must check every char in input to be in range (0, 8)
     input[0] = toupper(input[0]) - 65;
     input[2] = toupper(input[2]) - 65;
     input[1] -= 49;
@@ -401,7 +414,8 @@ int parse_move(char *input, game_state *gs) {
         printf("The move given was not legal.");
         return -1;
     }
-    // Now, update game state. (TODO: Change extras. Just updates move count and whose_turn now)
+    // Now, update game state. (TODO: Change extras. Just updates move count and
+    // whose_turn now)
     if (gs->whose_turn) {
         gs->moves += 1;
     }
@@ -450,7 +464,8 @@ int parse_input(game_state *gs) {
         printf("-ab\t\t:\tprints all bitboards\n");
         printf("-ex\t\t:\tlists the extras: whose move, castling "
                "rights,\n\t\t\ten-passant square, and number of moves\n");
-        printf("-moves\t\t:\tshow move bitboards for a piece, semi-algebraically.\n"
+        printf("-moves\t\t:\tshow move bitboards for a piece, "
+               "semi-algebraically.\n"
                "\t\t\t(WN for white knight, BR for black rook, etc)\n");
         return -1;
     }
@@ -488,22 +503,27 @@ int parse_input(game_state *gs) {
     else if (!strncmp(input, "-moves", 6)) {
         if (strlen(input) != 10) {
             // must be exactly two characters
-            printf("Code must be two characters. Try WN for white knight or BR for black rook.\n");
+            printf("Code must be two characters. Try WN for white knight or BR "
+                   "for black rook.\n");
         } else {
             int color = parse_color(input[7]);
             int piece = parse_piece(input[8]);
             if (piece == -1) {
-                printf("Not a valid piece. Try WN for white knight or BR for black rook.\n");
+                printf("Not a valid piece. Try WN for white knight or BR for "
+                       "black rook.\n");
             }
             if (color == -1) {
-                printf("Not a valid color. Try WN for white knight or BR for black rook.\n");
+                printf("Not a valid color. Try WN for white knight or BR for "
+                       "black rook.\n");
             }
             U64 piece_bb = gs->piece_bb[2 * piece + color];
             if (piece == 0) {
                 if (color) {
-                    print_bitboard(bpPushes(piece_bb) | bpAttacks(piece_bb), color);
+                    print_bitboard(bpPushes(piece_bb) | bpAttacks(piece_bb),
+                                   color);
                 } else {
-                    print_bitboard(wpPushes(piece_bb) | wpAttacks(piece_bb), color);
+                    print_bitboard(wpPushes(piece_bb) | wpAttacks(piece_bb),
+                                   color);
                 }
             } else if (piece == 1) {
                 print_bitboard(knightAttacks(piece_bb), color);
@@ -516,7 +536,8 @@ int parse_input(game_state *gs) {
             } else if (piece == 5) {
                 print_bitboard(kingAttacks(piece_bb), color);
             } else {
-                printf("We haven't implemented this piece's moves yet, sorry!\n");
+                printf(
+                    "We haven't implemented this piece's moves yet, sorry!\n");
             }
         }
         return -1;
