@@ -66,6 +66,20 @@ void parse_go(char *go) {
     //
 }
 
+// Print move: takes a move and prints as long-algebraic notation. Used for
+// taking the engine's choice of move and outputting to GUI
+void print_move(int move) {
+    if (decodeCapture(move)) {
+        printf("%s%s%s\n", boardStringMap[decodeSource(move)],
+                           boardStringMap[decodeDest(move)],
+                           pieceStringMap[decodePromote(move)]);
+    }
+    else {
+        printf("%s%s\n", boardStringMap[decodeSource(move)],
+                           boardStringMap[decodeDest(move)]);
+    }
+}
+
 // main UCI loop
 // Technically, by UCI standards we should ignore garbage preceding a command
 // and ignore any unnecessary whitespace, but we'll assume that commands are

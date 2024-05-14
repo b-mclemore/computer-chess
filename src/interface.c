@@ -38,6 +38,8 @@
 // Black background is dark green, white is tan
 #define bbg "\x1b[42m"
 #define wbg "\x1b[43m"
+// Blue background to highlight the last move
+#define lmbg "\x1b[46m"
 // White text and black text
 #define wtxt "\x1b[97m"
 #define btxt "\x1b[30m"
@@ -91,7 +93,7 @@ void print_extras(game_state *gs) {
         printf("Black may castle queenside\n");
     }
     if (gs->en_passant > -1) {
-        printf("The en-passant square is at %i\n", gs->en_passant);
+        printf("The en-passant square is at %llu\n", gs->en_passant);
     }
     printf("There have been %i halfmoves since the last pawn move or capture\n",
            gs->halfmove_counter);
@@ -274,7 +276,7 @@ tan, to match the chess.com color scheme.
 // don't get chopped in the command line
 char *unicode_pieces[12] = {"♙ ", "♞ ", "♝ ", "♜ ", "♛ ", "♚ "};
 
-void print_board(game_state *gs) {
+void print_board(game_state *gs, last_move *lm) {
     printf("\n");
     // start position is a 1 in the far left bit
     U64 pos = (U64)1 << 63;
@@ -287,6 +289,11 @@ void print_board(game_state *gs) {
             char *bg = wbg;
             if ((row + col) % 2) {
                 bg = bbg;
+            }
+            // If on the last move's squares, use a different color
+            square curr_square = 63 - (8 * row + col);
+            if ((curr_square == lm->orig_sq) || (curr_square == lm->dest_sq)) {
+                bg = lmbg;
             }
             // if no piece, continue, else color the piece
             char *txt = wtxt;
@@ -369,6 +376,88 @@ int parse_color(char color) {
         return -1;
 }
 
+// Helper to match a square string ("e2" например) to its
+// bitboard for encoding purposes. Already assumes properly formatted
+U64 strToSquare(int file, int rank) {
+    return ((U64)1 << (8 * rank + (7 - file)));
+}
+
+// Helper to match a move (string) against a list of moves:
+// simply iterate thru all moves in the list and check if we have a match
+// This is very slow, but only used for human input to play against the engine,
+// so time isn't a big issue
+// Returns 1 if matches, 0 if not
+int matchMove(char *input, moves *moveList, game_state *gs) {
+    // Assume that input is always of the form "e2e4" or "h7h8k" (to promote)
+    // but already reformatted (a -> 0, b -> 1, etc)
+    // Convert string to square
+    U64 source_bb = strToSquare(input[0], input[1]);
+    U64 dest_bb = strToSquare(input[2], input[3]);
+    // Encode: only source and dest are necessary to check
+    int proposed_move = encodeMove(source_bb, dest_bb, 0, 0, 0, 0, 0, 0);
+    int checkmask = 0b111111111111;
+    // Now can iterate thru all moves and check matches:
+    for (int i = 0; i < moveList->count; i++) {
+        int candidate_move = moveList->moves[i];
+        if ((candidate_move & checkmask) == proposed_move) {
+            // Found match
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Helper to match a char to enum. Queen promotion is default
+piece charToPiece(char input) {
+    switch (input) {
+        case 'N':
+            return knight;
+        case 'B':
+            return bishop;
+        case 'R':
+            return rook;
+        default:
+            return queen;
+    }
+}
+
+// Debugging function to print all moves in a movelist
+void printMoves(moves *moveList) {
+    printf("\nSource\tDest\tPiece\tPromote to\tDouble push\tEn passant\tCastling\n");
+    for (int i = 0; i < moveList->count; i++) {
+        char *capture, *doubled, *enPassant, *castle;
+        int move = moveList->moves[i];
+        char *source = boardStringMap[(decodeSource(move))];
+        char *dest = boardStringMap[(decodeDest(move))];
+        char *piec = pieceStringMap[decodePiece(move)];
+        char *promoteTo = pieceStringMap[decodePromote(move)];
+        if (!strcmp(promoteTo, "p")) {
+            promoteTo = " ";
+        }
+        if (decodeCapture(move)) {
+            capture = "X";
+        } else {
+            capture = " ";
+        }
+        if (decodeDouble(move)) {
+            doubled = "X";
+        } else {
+            doubled = " ";
+        }
+        if (decodeEnPassant(move)) {
+            enPassant = "X";
+        } else {
+            enPassant = " ";
+        }
+        if (decodeCastle(move)) {
+            castle = "X";
+        } else {
+            castle = " ";
+        }
+        printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", source, dest, piec, promoteTo, capture, doubled, enPassant, castle);
+    }
+}
+
 /*
 
 Now, a function to read "long" algebraic notation. This notation simply gives
@@ -379,9 +468,9 @@ parse the input.
 
 */
 
-int parse_move(char *input, game_state *gs) {
-    // We assume that the input is only 4 chars long (5 including newline)
-    if (strlen(input) != 5) {
+int parse_move(char *input, game_state *gs, last_move *lm) {
+    // We assume that the input is only 4 chars long (5 including promotion)
+    if ((strlen(input) < 5) || (6 < strlen(input))) {
         printf("The command was not recognized, try again.\n");
         return -1;
     }
@@ -390,36 +479,73 @@ int parse_move(char *input, game_state *gs) {
     // size 8, so: first, make sure string has form
     // (letter)(digit)(letter)(digit), then move by 8 based on letters and 1
     // based on digits
-    int idx = 0;
     // Form check: set to uppercase, where char A = 65, so subtract 65. Then
     // must check every char in input to be in range (0, 8)
     input[0] = toupper(input[0]) - 65;
     input[2] = toupper(input[2]) - 65;
     input[1] -= 49;
     input[3] -= 49;
+    input[4] = toupper(input[2]);
     int form = 0;
     for (int i = 0; i < 4; i++) {
-        form += ((input[i] < 0) || (8 < input[i]));
+        form += ((input[i] < 0) || (7 < input[i]));
     }
     if (form) {
-        printf("The move given was not recognized.\n");
+        printf("The move given was not recognized (squares do not exist).\n");
         return -1;
     }
-    // Now, check legality
+    // Second form check: check that the promotion char matches one of the LEGAL pieces to
+    // promote to
+    if ((6 == strlen(input)) && !((input[4] == 'N') | (input[4] == 'B') | (input[4] == 'R') | (input[4] == 'Q'))) {
+        printf("The move given was not recognized (illegal promotion).\n");
+        return -1;
+    }
+    // Now, check legality: first, find squares ...
+    int color = gs->whose_turn;
+    U64 source_bb = strToSquare(input[0], input[1]);
+    U64 dest_bb = strToSquare(input[2], input[3]);
+    piece promoteTo = pawn;
+    if (6 == strlen(input)) {
+        promoteTo = charToPiece(input[4]);
+    }
+    piece piec = pawn;
+    for (int pc_idx = 2; pc_idx < 12; pc_idx++) {
+        if (source_bb & gs->piece_bb[pc_idx]) {
+            piec = pc_idx / 2;
+            break;
+        }
+    }
+    int captureFlag = !!(dest_bb & gs->color_bb[1 - color]);
+    int doubleFlag = !!(((dest_bb << 16 & source_bb) || (dest_bb >> 16 & source_bb)) & (!piec));
+    int enPassantFlag = !!((dest_bb & gs->en_passant) & (!piec));
+    int castleFlag = 0;
+    int move = encodeMove(source_bb, dest_bb, piec, promoteTo, captureFlag, doubleFlag, enPassantFlag, castleFlag);
+    // ... next, generate all moves and see if this matches
+    moves *move_list = MALLOC(1, moves);
+    generateAllMoves(move_list, gs);
+    if (matchMove(input, move_list, gs)) {
+        // Save status before making move
+        game_state *save_file = MALLOC(1, game_state);
+        saveGamestate(gs, save_file);
+        // Make move ...
+        makeMove(move, gs);
+        // ... then check if this would put the king in check, and undo move if needed
+        if (checkCheck(gs)) {
+            printf("This move would have the king in check\n");
+            undoPreviousMove(gs, save_file);
+            free(save_file);
+            return -1;
+        }
+    } else {
+        printf("The move given was not legal.\n");
+        return -1;
+    }
+    // Update squares
     int piece_idx = (7 - input[0]) + 8 * input[1];
     int target_idx = (7 - input[2]) + 8 * input[3];
-    if (checkLegality(piece_idx, target_idx, gs)) {
-        makeMove(piece_idx, target_idx, gs);
-    } else {
-        printf("The move given was not legal.");
-        return -1;
-    }
-    // Now, update game state. (TODO: Change extras. Just updates move count and
-    // whose_turn now)
-    if (gs->whose_turn) {
-        gs->moves += 1;
-    }
-    gs->whose_turn = 1 - gs->whose_turn;
+    lm->orig_sq = piece_idx;
+    lm->dest_sq = target_idx;
+    free(move_list);
     return 1;
 }
 
@@ -430,7 +556,7 @@ We return 0 for failure, -1 for no new board, and 1 for a new board.
 
 // max buffer size
 #define INPUT_BUFFER 10000
-int parse_input(game_state *gs) {
+int parse_input(game_state *gs, last_move *lm) {
     // reset buffers
     setvbuf(stdin, NULL, _IOFBF, BUFSIZ);
     setvbuf(stdout, NULL, _IOFBF, BUFSIZ);
@@ -464,9 +590,10 @@ int parse_input(game_state *gs) {
         printf("-ab\t\t:\tprints all bitboards\n");
         printf("-ex\t\t:\tlists the extras: whose move, castling "
                "rights,\n\t\t\ten-passant square, and number of moves\n");
-        printf("-moves\t\t:\tshow move bitboards for a piece, "
+        printf("-movebb\t\t:\tshow move bitboards for a piece, "
                "semi-algebraically.\n"
                "\t\t\t(WN for white knight, BR for black rook, etc)\n");
+        printf("-legalmoves\t:\tprint all legal moves in the current position");
         return -1;
     }
     // print board for debugging
@@ -497,24 +624,28 @@ int parse_input(game_state *gs) {
                 init_board(gs);
             }
         }
+        lm->dest_sq = -1;
+        lm->orig_sq = -1;
         return 1;
     }
     // show move bitboards
-    else if (!strncmp(input, "-moves", 6)) {
-        if (strlen(input) != 10) {
+    else if (!strncmp(input, "-movebb", 7)) {
+        if (strlen(input) != 11) {
             // must be exactly two characters
             printf("Code must be two characters. Try WN for white knight or BR "
                    "for black rook.\n");
         } else {
-            int color = parse_color(input[7]);
-            int piece = parse_piece(input[8]);
+            int color = parse_color(input[8]);
+            int piece = parse_piece(input[9]);
             if (piece == -1) {
                 printf("Not a valid piece. Try WN for white knight or BR for "
                        "black rook.\n");
+                return -1;
             }
             if (color == -1) {
                 printf("Not a valid color. Try WN for white knight or BR for "
                        "black rook.\n");
+                return -1;
             }
             U64 piece_bb = gs->piece_bb[2 * piece + color];
             if (piece == 0) {
@@ -542,9 +673,17 @@ int parse_input(game_state *gs) {
         }
         return -1;
     }
+    else if (!strncmp(input, "-legalmoves", 10)) {
+        moves *move_list = MALLOC(1, moves);
+        generateLegalMoves(move_list, gs);
+        printf("Legal moves:\n");
+        printMoves(move_list);
+        free(move_list);
+        return -1;
+    }
     // default: try to make move
     else {
-        return parse_move(input, gs);
+        return parse_move(input, gs, lm);
     }
     return 0;
 }
