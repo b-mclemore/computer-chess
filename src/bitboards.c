@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 /*
   _______________________________________
@@ -65,7 +66,7 @@ for the 50 move rule
 
 These all also appear in game_state as the following:
 - whose_turn
-- castling[4]
+- castling
 - en_passant
 - halfmove_counter
 - moves
@@ -108,10 +109,8 @@ void init_board(game_state *gs) {
     gs->whose_turn = 0;
     gs->en_passant = 0;
     gs->halfmove_counter = 0;
-    gs->moves = 1;
-    for (int i = 0; i < 4; i++) {
-        gs->castling[i] = 1;
-    }
+    gs->moves = 0;
+    gs->castling = 0b1111;
 }
 
 // Set the bitboards to 0 before entering FEN information
@@ -126,9 +125,7 @@ static void clear_bitboards(game_state *gs) {
     gs->en_passant = 0;
     gs->halfmove_counter = 0;
     gs->moves = 0;
-    for (int i = 0; i < 4; i++) {
-        gs->castling[i] = 0;
-    }
+    gs->castling = 0;
 }
 
 /*
@@ -449,6 +446,29 @@ U64 enPassantAttacks(U64 pawn_bb, int color, U64 enPassantSq) {
     }
 }
 
+// Lastly, a "taboo" bitboard. This is equivalent to every attack
+// made by the OPPOSITE color, to see where the current color's king is
+// forbidden from moving, used for castling: the king cannot castle through
+// "taboo" squares
+U64 tabooBoard(game_state *gs) {
+    int color = gs->whose_turn;
+    int foe = 1 - color;
+    U64 empt = ~gs->all_bb;
+    // Find all attacks
+    U64 pawn_attacks;
+    if (color) {
+        pawn_attacks = wpAttacks(gs->piece_bb[2 * pawn + foe]);
+    } else {
+        pawn_attacks = bpAttacks(gs->piece_bb[2 * pawn + foe]);
+    }
+    U64 knight_attacks = knightAttacks(gs->piece_bb[2 * knight + foe]);
+    U64 bishop_attacks = bishopAttacks(gs->piece_bb[2 * bishop + foe], empt);
+    U64 rook_attacks = rookAttacks(gs->piece_bb[2 * rook + foe], empt);
+    U64 queen_attacks = queenAttacks(gs->piece_bb[2 * queen + foe], empt);
+    U64 king_attacks = kingAttacks(gs->piece_bb[2 * king + foe]);
+    return (pawn_attacks | knight_attacks | bishop_attacks | rook_attacks | queen_attacks | king_attacks);
+}
+
 /*
 
 Now we're ready to produce all "pseudo-legal" moves. We take a game_state and return encodings of
@@ -475,7 +495,7 @@ int bbToSq(U64 bb) {
 }
 
 // Encodes information about move as an int
-int encodeMove(U64 source_bb, U64 dest_bb, piece piec, piece promoteTo, int captureFlag, int doubleFlag, int enPassantFlag, int castleFlag) {
+int encodeMove(U64 source_bb, U64 dest_bb, piece piec, piece promoteTo, U64 captureFlag, U64 doubleFlag, U64 enPassantFlag, U64 castleFlag) {
     // Grab source and dest SQUARES from bitboards
     int source_sq = bbToSq(source_bb);
     int dest_sq = bbToSq(dest_bb);
@@ -551,7 +571,7 @@ void generateAllMoves(moves *moveList, game_state *gs) {
     // Mask to remove attacks on the same color
     U64 friendlyFireMask = ~gs->color_bb[color];
     // Flags for encoding later
-    int captureFlag, doubleFlag, enPassantFlag, castleFlag;
+    U64 captureFlag, doubleFlag, enPassantFlag, castleFlag;
     piece promoteTo;
     for (piece piec = pawn; piec <= king; piec++) {
         // Get all pieces
@@ -565,11 +585,10 @@ void generateAllMoves(moves *moveList, game_state *gs) {
             // Get all attacks
             switch (piec) {
                 case pawn:
-                    // TODO: promotion
                     if (color) {
-                        attacks_bb = ((bpPushes(source_bb) & empt) | (bpAttacks(source_bb) & gs->color_bb[foe]) | enPassantAttacks(source_bb, color, ((U64)1 << gs->en_passant)));
+                        attacks_bb = ((bpPushes(source_bb) & empt) | (bpAttacks(source_bb) & gs->color_bb[foe]) | enPassantAttacks(source_bb, color, gs->en_passant));
                     } else {
-                        attacks_bb = ((wpPushes(source_bb) & empt) | (wpAttacks(source_bb) & gs->color_bb[foe]) | enPassantAttacks(source_bb, color, ((U64)1 << gs->en_passant)));
+                        attacks_bb = ((wpPushes(source_bb) & empt) | (wpAttacks(source_bb) & gs->color_bb[foe]) | enPassantAttacks(source_bb, color, gs->en_passant));
                     }
                     break;
                 case knight:
@@ -585,17 +604,17 @@ void generateAllMoves(moves *moveList, game_state *gs) {
                     attacks_bb = queenAttacks(source_bb, empt);
                     break;
                 case king:
-                    // TODO: castling
-                    attacks_bb = kingAttacks(source_bb);
+                    // If the king is still permitted to castle, add to available moves
+                    // (legality check later, before adding to movelist)
+                    U64 kingside_castle = (gs->castling & (1 << (2 * foe + 1)));
+                    U64 queenside_castle = (gs->castling & (1 << (2 * foe)));
+                    attacks_bb = (kingAttacks(source_bb) | ((source_bb << 2) & (((U64)!!queenside_castle << 63) - 1)) | ((source_bb >> 2) & (((U64)!!kingside_castle << 63) - 1)));
                     break;
             }
             // Turn off friendly-fire
             attacks_bb &= friendlyFireMask;
             // Iter thru possible squares:
             while (attacks_bb) {
-                // Reset flags (TODO: should make these checks for real)
-                castleFlag = 0;
-                promoteTo = pawn;
                 // Get current attack (LSB)
                 currAttack_bb = attacks_bb & -attacks_bb;
                 // Remove LSB from piece bitboard
@@ -605,10 +624,41 @@ void generateAllMoves(moves *moveList, game_state *gs) {
                 // Check whether we've double-moved a pawn
                 doubleFlag = (((currAttack_bb << 16 & source_bb) || (currAttack_bb >> 16 & source_bb)) & (!piec));
                 // Check whether we've en-passant captures
-                enPassantFlag = (gs->en_passant & currAttack_bb);
-                // Add the move
-                move = encodeMove(source_bb, currAttack_bb, piec, promoteTo, captureFlag, doubleFlag, enPassantFlag, castleFlag);
-                addMove(moveList, move);
+                enPassantFlag = (gs->en_passant & currAttack_bb) && (!piec);
+                // Check whether castling
+                castleFlag = (((currAttack_bb << 2 & source_bb) || (currAttack_bb >> 2 & source_bb)) && (piec == king));
+                if (castleFlag) {
+                    // Check legality of castling before adding move:
+                    // First, whether the rook can capture the king
+                    int direction = !!((currAttack_bb >> 2) & source_bb);
+                    U64 which_rook_bb = ((U64)1 << (7 * direction + 56 * color));
+                    U64 rook_captures = rookAttacks(which_rook_bb, empt) & source_bb;
+                    // Next, whether the king would ever be in check
+                    U64 taboo = tabooBoard(gs);
+                    U64 start_check = source_bb & taboo;
+                    U64 intermediate_sq = (source_bb > currAttack_bb ? source_bb : currAttack_bb) >> 1;
+                    U64 intermediate_check = intermediate_sq & taboo & friendlyFireMask;
+                    U64 ends_check = currAttack_bb & taboo;
+                    // Failing any check will skip adding the move
+                    if (!rook_captures || start_check || intermediate_check || ends_check) {
+                        continue;
+                    }
+                }
+                // Check whether we've moved a pawn up to the last rank (can use bitwise OR since pawns can only
+                // get to one of the last ranks)
+                promoteTo = pawn; // <- equivalent to no promotion
+                U64 promoteFlag = ((!piec) & ((0b11111111 & currAttack_bb) || (((U64)0b11111111 << 56) & currAttack_bb)));
+                if (promoteFlag) {
+                    // If we have, then encode every promotion
+                    for (promoteTo = knight; promoteTo < king; promoteTo++) {
+                        move = encodeMove(source_bb, currAttack_bb, piec, promoteTo, captureFlag, doubleFlag, enPassantFlag, castleFlag);
+                        addMove(moveList, move);
+                    }
+                } else {
+                    // Add the move
+                    move = encodeMove(source_bb, currAttack_bb, piec, promoteTo, captureFlag, doubleFlag, enPassantFlag, castleFlag);
+                    addMove(moveList, move);
+                }
             }
         }
     }
@@ -621,8 +671,8 @@ void makeMove(int move, game_state *gs) {
     piece piec = decodePiece(move);
     piece promoteTo = decodePromote(move);
     int captureFlag = decodeCapture(move);
-    int doubleFlag = decodeCapture(move);
-    // int enPassantFlag = decodeEnPassant(move);
+    int doubleFlag = decodeDouble(move);
+    int enPassantFlag = decodeEnPassant(move);
     int castleFlag = decodeCastle(move);
     int color = gs->whose_turn;
     int foe = 1 - color;
@@ -637,34 +687,84 @@ void makeMove(int move, game_state *gs) {
     gs->all_bb |= dest_bb;
     // If capturing, update other color
     if (captureFlag) {
+        // TODO: disable castling
         // Remove other color
         gs->color_bb[foe] &= (~dest_bb);
         // Remove from every pieceboard (kings should not be valid)
-        gs->piece_bb[(0 * 2) + foe] &= (~dest_bb);
-        gs->piece_bb[(1 * 2) + foe] &= (~dest_bb);
-        gs->piece_bb[(2 * 2) + foe] &= (~dest_bb);
-        gs->piece_bb[(3 * 2) + foe] &= (~dest_bb);
-        gs->piece_bb[(4 * 2) + foe] &= (~dest_bb);
+        gs->piece_bb[(pawn * 2) + foe] &= (~dest_bb);
+        gs->piece_bb[(knight * 2) + foe] &= (~dest_bb);
+        gs->piece_bb[(bishop * 2) + foe] &= (~dest_bb);
+        gs->piece_bb[(rook * 2) + foe] &= (~dest_bb);
+        gs->piece_bb[(queen * 2) + foe] &= (~dest_bb);
     }
     // If double pushing, update en-passant square
     if (doubleFlag) {
         if (color) {
             gs->en_passant = dest_bb << 8;
         } else {
-            gs->en_passant = source_bb >> 8;
+            gs->en_passant = source_bb << 8;
         }
+    } else {
+        gs->en_passant = 0;
     }
-    // If castling, update castling array
-    if (castleFlag) {
-        // TODO
+    // If en-passant, remove captured pawn
+    if (enPassantFlag) {
+        U64 captured_pawn;
+        if (color) {
+            captured_pawn = dest_bb << 8;
+        } else {
+            captured_pawn = dest_bb >> 8;
+        }
+        gs->piece_bb[(pawn * 2) + foe] &= (~captured_pawn);
+        gs->color_bb[foe] &= (~captured_pawn);
+        gs->all_bb &= (~captured_pawn);
+
+    }
+    // Check whether castling is possible
+    if (gs->castling) {
+        // If castling, update castling array
+        if (castleFlag) {
+            // First, find which direction 
+            int direction = !!((dest_bb >> 2) & source_bb);
+            // Next, move rook
+            U64 which_rook_bb = (U64)1 << (7 * direction + 56 * color);
+            gs->piece_bb[(rook * 2) + color] &= (~which_rook_bb);
+            gs->color_bb[color] &= (~which_rook_bb);
+            gs->all_bb &= (~which_rook_bb);
+            U64 intermediate_sq = (source_bb > dest_bb ? source_bb : dest_bb) >> 1;
+            gs->piece_bb[(rook * 2) + color] |= intermediate_sq;
+            gs->color_bb[color] |= intermediate_sq;
+            gs->all_bb |= intermediate_sq;
+            // Lastly, update castling array
+            gs->castling &= ~((int)0b11 << (2 * foe));
+        }
+        // If not castling, but moving king, forbid castling
+        if (piec == king) {
+            gs->castling &= ~((int)0b11 << (2 * foe));
+        }
+        // If capturing on or moving from any of the corner squares, forbid castling
+        if ((source_bb & ((U64)1 << h1)) || (dest_bb & ((U64)1 << h1))) {
+            gs->castling &= ~(1 << 3);
+        }
+        if ((source_bb & ((U64)1 << a1)) || (dest_bb & ((U64)1 << a1))) {
+            gs->castling &= ~(1 << 2);
+        }
+        if ((source_bb & ((U64)1 << h8)) || (dest_bb & ((U64)1 << h8))) {
+            gs->castling &= ~(1 << 1);
+        }
+        if ((source_bb & ((U64)1 << a8)) || (dest_bb & ((U64)1 << a8))) {
+            gs->castling &= ~(1 << 0);
+        }
     }
     // If promoting, update piece
     if (promoteTo) {
-        // TODO
+        // remove from pawn board
+        gs->piece_bb[2 * pawn + color] &= (~dest_bb);
+        // Add to promoted board
+        gs->piece_bb[2 * promoteTo + color] |= (dest_bb);
     }
-    // Now, update game state. (TODO: Change extras. Just updates move count and
-    // whose_turn now)
-    if (gs->whose_turn) {
+    // Now, update turns/moves
+    if (1 - gs->whose_turn) {
         gs->moves += 1;
     }
     gs->whose_turn = foe;
@@ -703,9 +803,9 @@ U64 checkCheck(game_state *gs) {
     // Make all attacks (intersection of attacks w/ king)
     U64 pawn_attacks;
     if (color) {
-        pawn_attacks = wpAttacks(gs->piece_bb[2 * pawn + color]);
-    } else {
         pawn_attacks = bpAttacks(gs->piece_bb[2 * pawn + color]);
+    } else {
+        pawn_attacks = wpAttacks(gs->piece_bb[2 * pawn + color]);
     }
     U64 knight_attacks = knightAttacks(gs->piece_bb[2 * knight + color]);
     U64 bishop_attacks = bishopAttacks(gs->piece_bb[2 * bishop + color], empt);
@@ -721,7 +821,7 @@ void saveGamestate(game_state* gs, game_state *copy_address) {
     memcpy(copy_address->color_bb, gs->color_bb, sizeof(U64) * 2);
     memcpy(copy_address->piece_bb, gs->piece_bb, sizeof(U64) * 12);
     copy_address->whose_turn = gs->whose_turn;
-    memcpy(copy_address->castling, gs->castling, sizeof(int) * 4);
+    copy_address->castling = gs->castling;
     copy_address->en_passant = gs->en_passant;
     copy_address->halfmove_counter = gs->halfmove_counter;
     copy_address->moves = gs->moves;
@@ -733,7 +833,7 @@ void undoPreviousMove(game_state *gs, game_state *copy_address) {
     memcpy(gs->color_bb, copy_address->color_bb, sizeof(U64) * 2);
     memcpy(gs->piece_bb, copy_address->piece_bb, sizeof(U64) * 12);
     gs->whose_turn = copy_address->whose_turn;
-    memcpy(gs->castling, copy_address->castling, sizeof(int) * 4);
+    gs->castling = copy_address->castling;
     gs->en_passant = copy_address->en_passant;
     gs->halfmove_counter = copy_address->halfmove_counter;
     gs->moves = copy_address->moves;

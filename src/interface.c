@@ -33,18 +33,8 @@
 // It will be useful to have a bitboard printer as a debugging tool, which we'll
 // define here. It's pretty naive, just iterating through the bits and printing
 // 1 or 0.
-// We also want to color the board, which we do by printing the codes below
-
-// Black background is dark green, white is tan
-#define bbg "\x1b[42m"
-#define wbg "\x1b[43m"
-// Blue background to highlight the last move
-#define lmbg "\x1b[46m"
-// White text and black text
-#define wtxt "\x1b[97m"
-#define btxt "\x1b[30m"
-// Reset
-#define reset_txt "\x1b[0m"
+// We also want to color the board, which we do by printing the codes defined in
+// the header
 static void print_bitboard(U64 bitboard, int color) {
     char *txt = wtxt;
     if (color)
@@ -80,20 +70,20 @@ void print_extras(game_state *gs) {
     } else {
         printf("White to play\n");
     }
-    if (gs->castling[0]) {
+    if (gs->castling & 0b1000) {
         printf("White may castle kingside\n");
     }
-    if (gs->castling[1]) {
+    if (gs->castling & 0b0100) {
         printf("White may castle queenside\n");
     }
-    if (gs->castling[2]) {
+    if (gs->castling & 0b0010) {
         printf("Black may castle kingside\n");
     }
-    if (gs->castling[3]) {
+    if (gs->castling & 0b0001) {
         printf("Black may castle queenside\n");
     }
-    if (gs->en_passant > -1) {
-        printf("The en-passant square is at %llu\n", gs->en_passant);
+    if (gs->en_passant) {
+        printf("The en-passant square is at %s\n", boardStringMap[(bbToSq(gs->en_passant))]);
     }
     printf("There have been %i halfmoves since the last pawn move or capture\n",
            gs->halfmove_counter);
@@ -152,7 +142,7 @@ static int parse_extras(game_state *gs, char *inp, int idx) {
             if (piece) {
                 // Locate idx in castlemap
                 int index = (int)(piece - castle_map);
-                gs->castling[index] = 1;
+                gs->castling |= 1 << (3 - index);
             } else if (fen[idx] == ' ') {
                 idx += 1;
                 break;
@@ -382,24 +372,16 @@ U64 strToSquare(int file, int rank) {
     return ((U64)1 << (8 * rank + (7 - file)));
 }
 
-// Helper to match a move (string) against a list of moves:
+// Helper to match a move  against a list of moves:
 // simply iterate thru all moves in the list and check if we have a match
 // This is very slow, but only used for human input to play against the engine,
 // so time isn't a big issue
 // Returns 1 if matches, 0 if not
-int matchMove(char *input, moves *moveList, game_state *gs) {
-    // Assume that input is always of the form "e2e4" or "h7h8k" (to promote)
-    // but already reformatted (a -> 0, b -> 1, etc)
-    // Convert string to square
-    U64 source_bb = strToSquare(input[0], input[1]);
-    U64 dest_bb = strToSquare(input[2], input[3]);
-    // Encode: only source and dest are necessary to check
-    int proposed_move = encodeMove(source_bb, dest_bb, 0, 0, 0, 0, 0, 0);
-    int checkmask = 0b111111111111;
+int matchMove(int proposed_move, moves *moveList, game_state *gs) {
     // Now can iterate thru all moves and check matches:
     for (int i = 0; i < moveList->count; i++) {
         int candidate_move = moveList->moves[i];
-        if ((candidate_move & checkmask) == proposed_move) {
+        if (candidate_move == proposed_move) {
             // Found match
             return 1;
         }
@@ -416,45 +398,52 @@ piece charToPiece(char input) {
             return bishop;
         case 'R':
             return rook;
+        // No promotion
+        case '\n':
+            return pawn;
         default:
             return queen;
     }
 }
 
+// Debugging function to decode and print a move
+void printMove(int move) {
+    char *capture, *doubled, *enPassant, *castle;
+    char *source = boardStringMap[(decodeSource(move))];
+    char *dest = boardStringMap[(decodeDest(move))];
+    char *piec = pieceStringMap[decodePiece(move)];
+    char *promoteTo = pieceStringMap[decodePromote(move)];
+    if (!strcmp(promoteTo, "p")) {
+        promoteTo = " ";
+    }
+    if (decodeCapture(move)) {
+        capture = "X";
+    } else {
+        capture = " ";
+    }
+    if (decodeDouble(move)) {
+        doubled = "X";
+    } else {
+        doubled = " ";
+    }
+    if (decodeEnPassant(move)) {
+        enPassant = "X";
+    } else {
+        enPassant = " ";
+    }
+    if (decodeCastle(move)) {
+        castle = "X";
+    } else {
+        castle = " ";
+    }
+    printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", source, dest, piec, promoteTo, capture, doubled, enPassant, castle);
+}
+
 // Debugging function to print all moves in a movelist
 void printMoves(moves *moveList) {
-    printf("\nSource\tDest\tPiece\tPromote to\tDouble push\tEn passant\tCastling\n");
+    printf("\nSource\tDest\tPiece\tPromote\tCapture\tDouble\tEn pass\tCastle\n");
     for (int i = 0; i < moveList->count; i++) {
-        char *capture, *doubled, *enPassant, *castle;
-        int move = moveList->moves[i];
-        char *source = boardStringMap[(decodeSource(move))];
-        char *dest = boardStringMap[(decodeDest(move))];
-        char *piec = pieceStringMap[decodePiece(move)];
-        char *promoteTo = pieceStringMap[decodePromote(move)];
-        if (!strcmp(promoteTo, "p")) {
-            promoteTo = " ";
-        }
-        if (decodeCapture(move)) {
-            capture = "X";
-        } else {
-            capture = " ";
-        }
-        if (decodeDouble(move)) {
-            doubled = "X";
-        } else {
-            doubled = " ";
-        }
-        if (decodeEnPassant(move)) {
-            enPassant = "X";
-        } else {
-            enPassant = " ";
-        }
-        if (decodeCastle(move)) {
-            castle = "X";
-        } else {
-            castle = " ";
-        }
-        printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", source, dest, piec, promoteTo, capture, doubled, enPassant, castle);
+        printMove(moveList->moves[i]);
     }
 }
 
@@ -485,7 +474,7 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
     input[2] = toupper(input[2]) - 65;
     input[1] -= 49;
     input[3] -= 49;
-    input[4] = toupper(input[2]);
+    input[4] = toupper(input[4]);
     int form = 0;
     for (int i = 0; i < 4; i++) {
         form += ((input[i] < 0) || (7 < input[i]));
@@ -500,14 +489,12 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
         printf("The move given was not recognized (illegal promotion).\n");
         return -1;
     }
-    // Now, check legality: first, find squares ...
+    // Now, check legality: first, find move ...
     int color = gs->whose_turn;
     U64 source_bb = strToSquare(input[0], input[1]);
     U64 dest_bb = strToSquare(input[2], input[3]);
     piece promoteTo = pawn;
-    if (6 == strlen(input)) {
-        promoteTo = charToPiece(input[4]);
-    }
+    promoteTo = charToPiece(input[4]);
     piece piec = pawn;
     for (int pc_idx = 2; pc_idx < 12; pc_idx++) {
         if (source_bb & gs->piece_bb[pc_idx]) {
@@ -517,13 +504,13 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
     }
     int captureFlag = !!(dest_bb & gs->color_bb[1 - color]);
     int doubleFlag = !!(((dest_bb << 16 & source_bb) || (dest_bb >> 16 & source_bb)) & (!piec));
-    int enPassantFlag = !!((dest_bb & gs->en_passant) & (!piec));
-    int castleFlag = 0;
+    int enPassantFlag = !!((dest_bb & gs->en_passant) && (!piec));
+    int castleFlag = (((dest_bb << 2 & source_bb) || (dest_bb >> 2 & source_bb)) && (piec == king));
     int move = encodeMove(source_bb, dest_bb, piec, promoteTo, captureFlag, doubleFlag, enPassantFlag, castleFlag);
     // ... next, generate all moves and see if this matches
     moves *move_list = MALLOC(1, moves);
     generateAllMoves(move_list, gs);
-    if (matchMove(input, move_list, gs)) {
+    if (matchMove(move, move_list, gs)) {
         // Save status before making move
         game_state *save_file = MALLOC(1, game_state);
         saveGamestate(gs, save_file);

@@ -61,7 +61,7 @@ typedef struct gameState_t {
     U64 color_bb[2];  // The pair of color boards
     U64 all_bb;       // The board for all pieces
     int whose_turn;   // 0 = white, 1 = black
-    int castling[4];  // (0 or nonzero, in order WKQWbkbq)
+    int castling;  // (0b0000 or nonzero, in order WKQWbkbq)
     U64 en_passant;  // If last move was double pawn push, keep track of en-passant
     int halfmove_counter; // Counter for 50 move rule
     int moves;            // Number of moves in game
@@ -104,6 +104,16 @@ extern U64 rookAttacks(U64 rook_bb, U64 all_bb);
 -------------------------------------------
 ===========================================
 */
+// Black background is dark green, white is tan
+#define bbg "\x1b[42m"
+#define wbg "\x1b[43m"
+// Blue background to highlight the last move
+#define lmbg "\x1b[46m"
+// White text and black text
+#define wtxt "\x1b[97m"
+#define btxt "\x1b[30m"
+// Reset
+#define reset_txt "\x1b[0m"
 extern int parse_input(game_state *gs, last_move *lm);
 // For taking an index (square enum) and getting a string
 char *boardStringMap[64] = {
