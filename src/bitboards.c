@@ -205,8 +205,8 @@ U64 wpDoublePushes(U64 pawn_bb) {
     return ((pawn_bb & rank2) << 16);
 }
 
-U64 wpPushes(U64 pawn_bb) {
-    return (wpSinglePushes(pawn_bb) | wpDoublePushes(pawn_bb));
+U64 wpPushes(U64 pawn_bb, U64 empt) {
+    return ((wpSinglePushes(pawn_bb) & empt) | (wpDoublePushes(pawn_bb) & empt & (empt << 8)));
 }
 
 U64 bpSinglePushes(U64 pawn_bb) { return (pawn_bb >> 8); }
@@ -217,8 +217,8 @@ U64 bpDoublePushes(U64 pawn_bb) {
     return ((pawn_bb & rank7) >> 16);
 }
 
-U64 bpPushes(U64 pawn_bb) {
-    return (bpSinglePushes(pawn_bb) | bpDoublePushes(pawn_bb));
+U64 bpPushes(U64 pawn_bb, U64 empt) {
+    return ((bpSinglePushes(pawn_bb) & empt) | (bpDoublePushes(pawn_bb) & empt & (empt >> 8)));
 }
 
 /*
@@ -235,8 +235,8 @@ U64 kingAttacks(U64 king_bb) {
     // diagonal attacks
     U64 back = (bpSinglePushes(king_bb) | bpAttacks(king_bb));
     U64 forw = (wpSinglePushes(king_bb) | wpAttacks(king_bb));
-    U64 left = ((king_bb & notA) << 1);
-    U64 rght = ((king_bb & notH) >> 1);
+    U64 left = ((king_bb << 1) & notA);
+    U64 rght = ((king_bb >> 1) & notH);
     return (back | forw | left | rght);
 }
 
@@ -586,9 +586,9 @@ void generateAllMoves(moves *moveList, game_state *gs) {
             switch (piec) {
                 case pawn:
                     if (color) {
-                        attacks_bb = ((bpPushes(source_bb) & empt) | (bpAttacks(source_bb) & gs->color_bb[foe]) | enPassantAttacks(source_bb, color, gs->en_passant));
+                        attacks_bb = ((bpPushes(source_bb, empt)) | (bpAttacks(source_bb) & gs->color_bb[foe]) | (bpAttacks(source_bb) & enPassantAttacks(source_bb, color, gs->en_passant)));
                     } else {
-                        attacks_bb = ((wpPushes(source_bb) & empt) | (wpAttacks(source_bb) & gs->color_bb[foe]) | enPassantAttacks(source_bb, color, gs->en_passant));
+                        attacks_bb = ((wpPushes(source_bb, empt)) | (wpAttacks(source_bb) & gs->color_bb[foe]) | (wpAttacks(source_bb) & enPassantAttacks(source_bb, color, gs->en_passant)));
                     }
                     break;
                 case knight:
@@ -687,7 +687,6 @@ void makeMove(int move, game_state *gs) {
     gs->all_bb |= dest_bb;
     // If capturing, update other color
     if (captureFlag) {
-        // TODO: disable castling
         // Remove other color
         gs->color_bb[foe] &= (~dest_bb);
         // Remove from every pieceboard (kings should not be valid)
@@ -862,4 +861,39 @@ void generateLegalMoves(moves *move_list, game_state *gs) {
     }
     free(save_file);
     free(pseudo_legal);
+}
+
+/*
+
+Our final function: Perft (PERFormance Test, using move path enumeration)
+Here we generate all STRICTLY LEGAL moves in a position. This is used to debug
+our move generation by means of well-known Perft testing positions and their
+accepted move counts.
+
+*/
+// Counts legal moves at a given depth
+U64 perft(int depth, game_state *gs, int printMove) {
+    moves move_list[256];
+    U64 count = 0;
+
+    if (depth == 0)
+    return 1ULL;
+
+    game_state *save_file = MALLOC(1, game_state);
+
+    generateLegalMoves(move_list, gs);
+    for (int i = 0; i < move_list->count; i++) {
+        saveGamestate(gs, save_file);
+        makeMove(move_list->moves[i], gs);
+        int current_count = perft(depth - 1, gs, 0);
+        if (printMove) {
+            square source_sq = decodeSource(move_list->moves[i]);
+            square dest_sq = decodeDest(move_list->moves[i]);
+            printf("\t%s -> %s\t\t:\t%i\n",boardStringMap[source_sq], boardStringMap[dest_sq], current_count);
+        }
+        count += current_count;
+        undoPreviousMove(gs, save_file);
+    }
+    free(save_file);
+    return count;
 }

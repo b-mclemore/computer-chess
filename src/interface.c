@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/timeb.h>
 
 /*
   _______________________________________
@@ -536,6 +537,46 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
     return 1;
 }
 
+// Helper for perft: get time in milliseconds
+int get_time_ms() {
+    struct timeb time_value;
+    ftime(&time_value);
+    return time_value.time * 1000 + time_value.millitm;
+}
+
+// Helper to print perft counts
+void printPerft(int depth, game_state *gs, int per_move_flag) {
+    U64 depth_count;
+    depth += 1;
+    for (int i = 1; i < depth; i++) {
+        int start_ms = get_time_ms();
+        if ((i == depth - 1) && per_move_flag) {
+            printf("\nMoves for depth %i:\n", i);
+        }
+        depth_count = perft(i, gs, (i == depth - 1 ? per_move_flag : 0));
+        int end_ms = get_time_ms();
+        printf("Depth %i\t:\t%llu moves\t:\t%i ms\n", i, depth_count, end_ms - start_ms);
+    }
+}
+
+// Helper to parse depth (should be string of digits)
+int parseDepth(char *input) {
+    int idx = 0;
+    int depth = 0;
+    if (!isdigit(input[idx])) {
+        return -1;
+    }
+    // Extract the number
+    while (isdigit(input[idx])) {
+        depth = (depth * 10) + (input[idx] - '0');
+        idx++;
+    }
+    if (idx != strlen(input) - 1) {
+        return -1;
+    }
+    return depth;
+}
+
 /*
 The main function: the input parser.
 We return 0 for failure, -1 for no new board, and 1 for a new board.
@@ -580,7 +621,8 @@ int parse_input(game_state *gs, last_move *lm) {
         printf("-movebb\t\t:\tshow move bitboards for a piece, "
                "semi-algebraically.\n"
                "\t\t\t(WN for white knight, BR for black rook, etc)\n");
-        printf("-legalmoves\t:\tprint all legal moves in the current position");
+        printf("-legalmoves\t:\tprint all legal moves in the current position\n");
+        printf("-perft [depth]\t:\tprint the number of legal moves at a given depth\n");
         return -1;
     }
     // print board for debugging
@@ -637,10 +679,10 @@ int parse_input(game_state *gs, last_move *lm) {
             U64 piece_bb = gs->piece_bb[2 * piece + color];
             if (piece == 0) {
                 if (color) {
-                    print_bitboard(bpPushes(piece_bb) | bpAttacks(piece_bb),
+                    print_bitboard(bpPushes(piece_bb, ~gs->all_bb) | bpAttacks(piece_bb),
                                    color);
                 } else {
-                    print_bitboard(wpPushes(piece_bb) | wpAttacks(piece_bb),
+                    print_bitboard(wpPushes(piece_bb, ~gs->all_bb) | wpAttacks(piece_bb),
                                    color);
                 }
             } else if (piece == 1) {
@@ -660,12 +702,33 @@ int parse_input(game_state *gs, last_move *lm) {
         }
         return -1;
     }
-    else if (!strncmp(input, "-legalmoves", 10)) {
+    // Show current legal moves
+    else if (!strncmp(input, "-legalmoves", 11)) {
         moves *move_list = MALLOC(1, moves);
         generateLegalMoves(move_list, gs);
         printf("Legal moves:\n");
         printMoves(move_list);
         free(move_list);
+        return -1;
+    }
+    // Show perft counts for given depth
+    else if (!strncmp(input, "-perft", 6)) {
+        int depth = parseDepth(input + 7);
+        if (depth == -1) {
+            printf("The depth was ill-formatted, please use an integer, for example \'-perft 3\'");
+        } else {
+            printPerft(depth, gs, 0);
+        }
+        return -1;
+    }
+    // Show perft counts for given depth, with per-move counts
+    else if (!strncmp(input, "-perfm", 6)) {
+        int depth = parseDepth(input + 7);
+        if (depth == -1) {
+            printf("The depth was ill-formatted, please use an integer, for example \'-perft 3\'");
+        } else {
+            printPerft(depth, gs, 1);
+        }
         return -1;
     }
     // default: try to make move
