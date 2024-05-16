@@ -17,4 +17,4 @@ In `src`:
 
 In `tuning`:
 * **texel.ipynb**: Notebook for [texel tuning](https://www.chessprogramming.org/Texel%27s_Tuning_Method) (Under construction)
-* **cnn.ipynb**: Notebook for a convolutional neural network to evaluate a 16-channel bitboard with a 3x3 kernel (Under construction)
+* **cnn.ipynb**: Notebook to train a convolutional neural network to evaluate a 16-channel bitboard with a 3x3 kernel. The trained model's weights will then be used in `eval.c`. (Under construction)
