@@ -12,8 +12,8 @@ In `src`:
 * **bitboards.c**: Framework for representing the board as a [bitboard](https://www.chessprogramming.org/Bitboards) as well as move generation.
 * **interface.c**: The command-line interface and debugging functions.
 * **uci.c**: The UCI-compliant interface. 
-* **search.c**: Code to search through a tree of legal moves. (Under construction)
-* **eval.c**: Code to evaluate a given position, necessary for the search. (Under construction)
+* **search.c**: Code to search through a tree of legal moves.
+* **eval.c**: Code to evaluate a given position, necessary for the search.
 
 In `tuning`:
 * **texel.ipynb**: Notebook for [texel tuning](https://www.chessprogramming.org/Texel%27s_Tuning_Method) (Under construction)
