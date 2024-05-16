@@ -1,4 +1,4 @@
-#include "bitboards.c"
+#define _CRT_SECURE_NO_WARNINGS
 #include "chess.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -30,6 +30,21 @@
 ===========================================
 
 */
+
+char *boardStringMap[64] = {
+    "h1", "g1", "f1", "e1", "d1", "c1", "b1", "a1",
+    "h2", "g2", "f2", "e2", "d2", "c2", "b2", "a2",
+    "h3", "g3", "f3", "e3", "d3", "c3", "b3", "a3",
+    "h4", "g4", "f4", "e4", "d4", "c4", "b4", "a4",
+    "h5", "g5", "f5", "e5", "d5", "c5", "b5", "a5",
+    "h6", "g6", "f6", "e6", "d6", "c6", "b6", "a6",
+    "h7", "g7", "f7", "e7", "d7", "c7", "b7", "a7",
+    "h8", "g8", "f8", "e8", "d8", "c8", "b8", "a8",
+};
+// For taking an index (piece enum) and getting a piece
+char *pieceStringMap[6] = {
+    "p", "n", "b", "r", "q", "k"
+};
 
 // It will be useful to have a bitboard printer as a debugging tool, which we'll
 // define here. It's pretty naive, just iterating through the bits and printing
@@ -312,6 +327,8 @@ void print_board(game_state *gs, last_move *lm) {
     printf("\n");
     // print letter for cols
     printf("   A B C D E F G H \n\n");
+    // Force board to be printed
+    fflush(stdout);
 }
 
 // It will also be useful to print all bitboards from the command line
@@ -534,7 +551,7 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
     lm->orig_sq = piece_idx;
     lm->dest_sq = target_idx;
     free(move_list);
-    return 1;
+    return 2;
 }
 
 // Helper for perft: get time in milliseconds
@@ -575,6 +592,25 @@ int parseDepth(char *input) {
         return -1;
     }
     return depth;
+}
+
+// Helper to check whether the current game has ended (no legal moves)
+int checkGameover(moves *ms, game_state *gs) {
+    generateLegalMoves(ms, gs);
+    // If there are no legal moves, the game is over
+    if (ms->count == 0) {
+        printf("Game over! ");
+        // Flip turn to make the check function look at the next player's king
+        gs->whose_turn = 1 - gs->whose_turn;
+        if (checkCheck(gs)) {
+            printf("%s has been checkmated.\n\n", 1 - gs->whose_turn ? "Black" : "White");
+        } else {
+            printf("The game is a stalemate.\n\n");
+        }
+        return 1;
+    } else {
+        return 0;
+    }
 }
 
 /*
@@ -623,6 +659,7 @@ int parse_input(game_state *gs, last_move *lm) {
                "\t\t\t(WN for white knight, BR for black rook, etc)\n");
         printf("-legalmoves\t:\tprint all legal moves in the current position\n");
         printf("-perft [depth]\t:\tprint the number of legal moves at a given depth\n");
+        printf("-eval\t\t:\tgives evaluation score of current position");
         return -1;
     }
     // print board for debugging
@@ -730,6 +767,14 @@ int parse_input(game_state *gs, last_move *lm) {
             printPerft(depth, gs, 1);
         }
         return -1;
+    // Show evaluation of current board (no search)
+    } else if (!strncmp(input, "-eval", 5)){
+        printf("Board evaluation = %i\n", evaluate(gs));
+        return -1;
+    }
+    // Make computer play itself
+    else if (!strncmp(input, "-test", 5)) {
+        return 3;
     }
     // default: try to make move
     else {

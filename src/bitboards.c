@@ -114,7 +114,7 @@ void init_board(game_state *gs) {
 }
 
 // Set the bitboards to 0 before entering FEN information
-static void clear_bitboards(game_state *gs) {
+void clear_bitboards(game_state *gs) {
     for (int i = 0; i < 12; i++) {
         gs->piece_bb[i] = (U64)0;
     }
@@ -608,7 +608,13 @@ void generateAllMoves(moves *moveList, game_state *gs) {
                     // (legality check later, before adding to movelist)
                     U64 kingside_castle = (gs->castling & (1 << (2 * foe + 1)));
                     U64 queenside_castle = (gs->castling & (1 << (2 * foe)));
-                    attacks_bb = (kingAttacks(source_bb) | ((source_bb << 2) & (((U64)!!queenside_castle << 63) - 1)) | ((source_bb >> 2) & (((U64)!!kingside_castle << 63) - 1)));
+                    attacks_bb = kingAttacks(source_bb);
+                    if (kingside_castle) {
+                        attacks_bb |= ((source_bb << 2) & notAB);
+                    }
+                    if (queenside_castle) {
+                        attacks_bb |= ((source_bb >> 2) & notGH);
+                    }
                     break;
             }
             // Turn off friendly-fire

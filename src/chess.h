@@ -89,13 +89,46 @@ extern void init_board(game_state *gs);
 #define TEST_POS                                                               \
     "r1b1kb1r/p1p2ppp/2n2n2/1B2p1N1/2P5/8/PP1P1PqP/RNBQK2R w KQkq - 0 1"
 #define PIECE_MAP "PpNnBbRrQqKk"
+// Parsing and printing
 extern int parse_fen(game_state *gs, char *fen);
 extern void print_board(game_state *gs, last_move *lm);
 extern void print_all_bitboards(game_state *gs);
 extern void print_extras(game_state *gs);
+extern void clear_bitboards(game_state *gs);
+extern int bbToSq(U64 bb);
+
+// Generating attacks
 extern U64 knightAttacks(U64 knight_bb);
+extern U64 wpAttacks(U64 pawn_bb);
+extern U64 bpAttacks(U64 pawn_bb);
+extern U64 wpPushes(U64 pawn_bb, U64 empt);
+extern U64 bpPushes(U64 pawn_bb, U64 empt);
 extern U64 kingAttacks(U64 king_bb);
+extern U64 bishopAttacks(U64 bishop_bb, U64 all_bb);
 extern U64 rookAttacks(U64 rook_bb, U64 all_bb);
+extern U64 queenAttacks(U64 queen_bb, U64 all_bb);
+extern U64 checkCheck(game_state *gs);
+
+// Encoding/decoding moves
+extern int encodeMove(U64 source_bb, U64 dest_bb, piece piec, piece promoteTo, U64 captureFlag, U64 doubleFlag, U64 enPassantFlag, U64 castleFlag);
+extern square decodeSource(int move);
+extern square decodeDest(int move);
+extern piece decodePiece(int move);
+extern piece decodePromote(int move);
+extern int decodeCapture(int move);
+extern int decodeDouble(int move);
+extern int decodeEnPassant(int move);
+extern int decodeCastle(int move);
+
+// Saving game states
+extern void saveGamestate(game_state* gs, game_state *copy_address);
+extern void undoPreviousMove(game_state *gs, game_state *copy_address);
+extern void makeMove(int move, game_state *gs);
+
+// Finding moves
+extern void generateAllMoves(moves *moveList, game_state *gs);
+extern void generateLegalMoves(moves *move_list, game_state *gs);
+extern U64 perft(int depth, game_state *gs, int printMove);
 
 /*
 ===========================================
@@ -116,19 +149,33 @@ extern U64 rookAttacks(U64 rook_bb, U64 all_bb);
 #define reset_txt "\x1b[0m"
 extern int parse_input(game_state *gs, last_move *lm);
 // For taking an index (square enum) and getting a string
-char *boardStringMap[64] = {
-    "h1", "g1", "f1", "e1", "d1", "c1", "b1", "a1",
-    "h2", "g2", "f2", "e2", "d2", "c2", "b2", "a2",
-    "h3", "g3", "f3", "e3", "d3", "c3", "b3", "a3",
-    "h4", "g4", "f4", "e4", "d4", "c4", "b4", "a4",
-    "h5", "g5", "f5", "e5", "d5", "c5", "b5", "a5",
-    "h6", "g6", "f6", "e6", "d6", "c6", "b6", "a6",
-    "h7", "g7", "f7", "e7", "d7", "c7", "b7", "a7",
-    "h8", "g8", "f8", "e8", "d8", "c8", "b8", "a8",
-};
+extern char *boardStringMap[64];
 // For taking an index (piece enum) and getting a piece
-char *pieceStringMap[6] = {
-    "p", "n", "b", "r", "q", "k"
-};
+extern char *pieceStringMap[6];
+// Helper to check whether the current game has ended (no legal moves)
+extern int checkGameover(moves *ms, game_state *gs);
+extern int get_time_ms();
+
+/*
+===========================================
+-------------------------------------------
+                EVALUATION
+-------------------------------------------
+===========================================
+*/
+// Evaluates current position (in centipawns)
+extern int evaluate(game_state *gs);
+
+/*
+===========================================
+-------------------------------------------
+                SEARCH
+-------------------------------------------
+===========================================
+*/
+// Finds best move for current player
+extern int findBestMove(game_state *gs, int depth, int *score);
+// Iteratively deepen w/ findBestMove
+extern int iterativelyDeepen(game_state *gs, int turn_time_ms);
 
 #endif

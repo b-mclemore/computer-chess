@@ -1,5 +1,4 @@
 #define _CRT_SECURE_NO_WARNINGS
-#include "bitboards.c"
 #include "chess.h"
 #include <ctype.h>
 #include <stdio.h>
