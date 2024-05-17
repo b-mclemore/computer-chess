@@ -439,7 +439,7 @@ U64 enPassantAttacks(U64 pawn_bb, int color, U64 enPassantSq) {
         attacksFromSq = bpAttacks(enPassantSq);
     }
     // Return enPassantSq
-    if (attacksFromSq) {
+    if (attacksFromSq & pawn_bb) {
         return enPassantSq;
     } else {
         return 0;

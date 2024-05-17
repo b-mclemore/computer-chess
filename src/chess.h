@@ -148,13 +148,25 @@ extern U64 perft(int depth, game_state *gs, int printMove);
 // Reset
 #define reset_txt "\x1b[0m"
 extern int parse_input(game_state *gs, last_move *lm);
+extern int parse_fen(game_state *gs, char *fen);
 // For taking an index (square enum) and getting a string
-extern char *boardStringMap[64];
+extern const char *boardStringMap[64];
 // For taking an index (piece enum) and getting a piece
-extern char *pieceStringMap[6];
+extern const char *pieceStringMap[6];
 // Helper to check whether the current game has ended (no legal moves)
 extern int checkGameover(moves *ms, game_state *gs);
 extern int get_time_ms();
+extern void printMoves(moves *moveList);
+extern int parse_move(char *input, game_state *gs, last_move *lm);
+
+/*
+===========================================
+-------------------------------------------
+              UCI INTERFACE
+-------------------------------------------
+===========================================
+*/
+extern void uci_loop(game_state *gs);
 
 /*
 ===========================================

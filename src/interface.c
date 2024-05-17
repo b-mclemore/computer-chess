@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/timeb.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 /*
   _______________________________________
@@ -30,21 +33,6 @@
 ===========================================
 
 */
-
-char *boardStringMap[64] = {
-    "h1", "g1", "f1", "e1", "d1", "c1", "b1", "a1",
-    "h2", "g2", "f2", "e2", "d2", "c2", "b2", "a2",
-    "h3", "g3", "f3", "e3", "d3", "c3", "b3", "a3",
-    "h4", "g4", "f4", "e4", "d4", "c4", "b4", "a4",
-    "h5", "g5", "f5", "e5", "d5", "c5", "b5", "a5",
-    "h6", "g6", "f6", "e6", "d6", "c6", "b6", "a6",
-    "h7", "g7", "f7", "e7", "d7", "c7", "b7", "a7",
-    "h8", "g8", "f8", "e8", "d8", "c8", "b8", "a8",
-};
-// For taking an index (piece enum) and getting a piece
-char *pieceStringMap[6] = {
-    "p", "n", "b", "r", "q", "k"
-};
 
 // It will be useful to have a bitboard printer as a debugging tool, which we'll
 // define here. It's pretty naive, just iterating through the bits and printing
@@ -126,7 +114,7 @@ char *castle_map = "KQkq";
 
 // Parses only the string after the squares in a FEN string
 // (Warning: very ugly)
-static int parse_extras(game_state *gs, char *inp, int idx) {
+static int parse_extras(game_state *gs, char *inp, long unsigned int idx) {
     // First, copy the fen to a bigger buffer to avoid faults
     char fen[400];
     strcpy(fen, inp);
@@ -227,7 +215,7 @@ int parse_fen(game_state *gs, char *fen) {
     clear_bitboards(gs);
     // start position is a 1 in the far left bit
     U64 pos = (U64)1 << 63;
-    for (int idx = 0; idx < strlen(fen); idx++) {
+    for (long unsigned int idx = 0; idx < strlen(fen); idx++) {
         char ch = fen[idx];
         // if /, do nothing
         if (ch == '/') {
@@ -395,7 +383,7 @@ U64 strToSquare(int file, int rank) {
 // This is very slow, but only used for human input to play against the engine,
 // so time isn't a big issue
 // Returns 1 if matches, 0 if not
-int matchMove(int proposed_move, moves *moveList, game_state *gs) {
+int matchMove(int proposed_move, moves *moveList) {
     // Now can iterate thru all moves and check matches:
     for (int i = 0; i < moveList->count; i++) {
         int candidate_move = moveList->moves[i];
@@ -419,6 +407,8 @@ piece charToPiece(char input) {
         // No promotion
         case '\n':
             return pawn;
+		case ' ':
+			return pawn;
         default:
             return queen;
     }
@@ -427,10 +417,10 @@ piece charToPiece(char input) {
 // Debugging function to decode and print a move
 void printMove(int move) {
     char *capture, *doubled, *enPassant, *castle;
-    char *source = boardStringMap[(decodeSource(move))];
-    char *dest = boardStringMap[(decodeDest(move))];
-    char *piec = pieceStringMap[decodePiece(move)];
-    char *promoteTo = pieceStringMap[decodePromote(move)];
+    const char *source = boardStringMap[(decodeSource(move))];
+    const char *dest = boardStringMap[(decodeDest(move))];
+    const char *piec = pieceStringMap[decodePiece(move)];
+    const char *promoteTo = pieceStringMap[decodePromote(move)];
     if (!strcmp(promoteTo, "p")) {
         promoteTo = " ";
     }
@@ -476,11 +466,6 @@ parse the input.
 */
 
 int parse_move(char *input, game_state *gs, last_move *lm) {
-    // We assume that the input is only 4 chars long (5 including promotion)
-    if ((strlen(input) < 5) || (6 < strlen(input))) {
-        printf("The command was not recognized, try again.\n");
-        return -1;
-    }
     // Recall that h8 = 0 and a1 = 1 << 63 (bitboard) or 63 (array index)
     // Therefore we treat rank as the slow axis and file as the fast, both with
     // size 8, so: first, make sure string has form
@@ -492,19 +477,15 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
     input[2] = toupper(input[2]) - 65;
     input[1] -= 49;
     input[3] -= 49;
-    input[4] = toupper(input[4]);
+	if (input[4] != ' ') {
+		input[4] = toupper(input[4]);
+	}
     int form = 0;
     for (int i = 0; i < 4; i++) {
         form += ((input[i] < 0) || (7 < input[i]));
     }
     if (form) {
         printf("The move given was not recognized (squares do not exist).\n");
-        return -1;
-    }
-    // Second form check: check that the promotion char matches one of the LEGAL pieces to
-    // promote to
-    if ((6 == strlen(input)) && !((input[4] == 'N') | (input[4] == 'B') | (input[4] == 'R') | (input[4] == 'Q'))) {
-        printf("The move given was not recognized (illegal promotion).\n");
         return -1;
     }
     // Now, check legality: first, find move ...
@@ -528,7 +509,7 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
     // ... next, generate all moves and see if this matches
     moves *move_list = MALLOC(1, moves);
     generateAllMoves(move_list, gs);
-    if (matchMove(move, move_list, gs)) {
+    if (matchMove(move, move_list)) {
         // Save status before making move
         game_state *save_file = MALLOC(1, game_state);
         saveGamestate(gs, save_file);
@@ -542,6 +523,9 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
             return -1;
         }
     } else {
+		square source_sq = decodeSource(move);
+        square dest_sq = decodeDest(move);
+		printf("\t%s -> %s\n",boardStringMap[source_sq], boardStringMap[dest_sq]);
         printf("The move given was not legal.\n");
         return -1;
     }
@@ -556,9 +540,13 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
 
 // Helper for perft: get time in milliseconds
 int get_time_ms() {
-    struct timeb time_value;
-    ftime(&time_value);
-    return time_value.time * 1000 + time_value.millitm;
+    #ifdef WIN64
+        return GetTickCount();
+    #else
+		struct timeb time_value;
+		ftime(&time_value);
+		return time_value.time * 1000 + time_value.millitm;
+	#endif
 }
 
 // Helper to print perft counts
@@ -578,7 +566,7 @@ void printPerft(int depth, game_state *gs, int per_move_flag) {
 
 // Helper to parse depth (should be string of digits)
 int parseDepth(char *input) {
-    int idx = 0;
+    unsigned long int idx = 0;
     int depth = 0;
     if (!isdigit(input[idx])) {
         return -1;
@@ -629,6 +617,10 @@ int parse_input(game_state *gs, last_move *lm) {
     // zero out
     memset(input, 0, sizeof(input));
     fflush(stdout);
+	if ((strlen(input) < 4)) {
+        printf("The command was not recognized, try again.\n");
+        return -1;
+    }
     if (!fgets(input, INPUT_BUFFER, stdin)) {
         // failed to read
         printf("Failed to read input\n");
