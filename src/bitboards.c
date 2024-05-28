@@ -98,12 +98,12 @@ void init_board(game_state *gs) {
     gs->piece_bb[11] = (U64)0b00001000 << 56;
 
     // white pieces
-    gs->color_bb[0] = (U64)0b1111111111111111;
+    gs->color_bb[WHITE] = (U64)0b1111111111111111;
     // black pieces
-    gs->color_bb[1] = (U64)0b1111111111111111 << 48;
+    gs->color_bb[BLACK] = (U64)0b1111111111111111 << 48;
 
     // all pieces
-    gs->all_bb = gs->color_bb[0] ^ gs->color_bb[1];
+    gs->all_bb = gs->color_bb[WHITE] ^ gs->color_bb[BLACK];
 
     // extras
     gs->whose_turn = 0;
@@ -118,8 +118,8 @@ void clear_bitboards(game_state *gs) {
     for (int i = 0; i < 12; i++) {
         gs->piece_bb[i] = (U64)0;
     }
-    gs->color_bb[0] = (U64)0;
-    gs->color_bb[1] = (U64)0;
+    gs->color_bb[WHITE] = (U64)0;
+    gs->color_bb[BLACK] = (U64)0;
     gs->all_bb = (U64)0;
     gs->whose_turn = 0;
     gs->en_passant = 0;
@@ -491,7 +491,7 @@ the move and appending to the movelist
 
 // Converts bb w/ 1 piece to its square (counts trailing zeros w/ GCC builtin)
 int bbToSq(U64 bb) {
-    return __builtin_ctzl(bb);
+    return __builtin_ctzll(bb);
 }
 
 // Encodes information about move as an int
@@ -610,10 +610,10 @@ void generateAllMoves(moves *moveList, game_state *gs) {
                     U64 queenside_castle = (gs->castling & (1 << (2 * foe)));
                     attacks_bb = kingAttacks(source_bb);
                     if (kingside_castle) {
-                        attacks_bb |= ((source_bb << 2) & notAB);
+                        attacks_bb |= ((source_bb >> 2) & notGH);
                     }
                     if (queenside_castle) {
-                        attacks_bb |= ((source_bb >> 2) & notGH);
+                        attacks_bb |= ((source_bb << 2) & notAB);
                     }
                     break;
             }

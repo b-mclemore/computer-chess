@@ -36,9 +36,9 @@ best move for the opponent.
 */
 
 // Combined minimax (negaMax)
-int negaMax(game_state *gs, int alpha, int beta, int depth) {
+int negaMax(game_state *gs, int mg_table[12][64], int eg_table[12][64], int alpha, int beta, int depth) {
 	// If at leaf node (max depth), return evaluation
-    if (depth == 0) return evaluate(gs);
+    if (depth == 0) return evaluate(gs, mg_table, eg_table);
     int max = -9999999;
 	int score;
 	moves move_list[256];
@@ -53,7 +53,7 @@ int negaMax(game_state *gs, int alpha, int beta, int depth) {
 		makeMove(move, gs);
 		if (!checkCheck(gs)) {
 			// Make sure legal before continuing
-			score = -negaMax(gs, -beta, -alpha, depth - 1);
+			score = -negaMax(gs, mg_table, eg_table, -beta, -alpha, depth - 1);
 			if (score > max) {
 				max = score;
 			}
@@ -74,7 +74,7 @@ int negaMax(game_state *gs, int alpha, int beta, int depth) {
 }
 
 // Find best move via negaMax
-int findBestMove(game_state *gs, int depth, int *best_score) {
+int findBestMove(game_state *gs, int mg_table[12][64], int eg_table[12][64], int depth, int *best_score) {
 	// Copied negaMax, but here we return a BEST MOVE int, not a scoring
 	// int at the end
 	int max = -9999999;
@@ -92,7 +92,7 @@ int findBestMove(game_state *gs, int depth, int *best_score) {
 		saveGamestate(gs, save_file);
 		// Next, make move
 		makeMove(move, gs);
-        score = -negaMax(gs, -beta, -alpha, depth - 1);
+        score = -negaMax(gs, mg_table, eg_table, -beta, -alpha, depth - 1);
 		/*
 		square source_sq = decodeSource(move_list->moves[i]);
         square dest_sq = decodeDest(move_list->moves[i]);
@@ -115,7 +115,7 @@ int findBestMove(game_state *gs, int depth, int *best_score) {
 // Useful for two cases: first, it early returns if mate is found, meaning we select
 // the fastest mate, and secondly, it ensures a move is found in a given amount of time,
 // even if the search hasn't finished
-int iterativelyDeepen(game_state *gs, int turn_time_ms) {
+int iterativelyDeepen(game_state *gs, int mg_table[12][64], int eg_table[12][64], int turn_time_ms) {
 	int ply = 1;
 	int start_time = get_time_ms();
 	int score;
@@ -127,7 +127,7 @@ int iterativelyDeepen(game_state *gs, int turn_time_ms) {
 		if (curr_time - start_time > turn_time_ms) {
 			break;
 		}
-		best_move = findBestMove(gs, ply, &score);
+		best_move = findBestMove(gs, mg_table, eg_table, ply, &score);
 		// Deepen for next search
 		++ply;
 		// Early return for checkmate
@@ -139,9 +139,9 @@ int iterativelyDeepen(game_state *gs, int turn_time_ms) {
 }
 
 // Finds best move and returns a long-algebraic string version
-void computerMakeMove(char output[5], game_state *gs, int depth) {
+void computerMakeMove(char output[5], game_state *gs, int mg_table[12][64], int eg_table[12][64], int depth) {
 	int score;
-	int best_move = findBestMove(gs, depth, &score);
+	int best_move = findBestMove(gs, mg_table, eg_table, depth, &score);
 	square source_sq = decodeSource(best_move);
 	square dest_sq = decodeDest(best_move);
 	piece promoteTo = decodePromote(best_move);

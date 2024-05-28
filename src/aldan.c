@@ -36,21 +36,6 @@
 
 */
 
-const char *boardStringMap[64] = {
-    "h1", "g1", "f1", "e1", "d1", "c1", "b1", "a1",
-    "h2", "g2", "f2", "e2", "d2", "c2", "b2", "a2",
-    "h3", "g3", "f3", "e3", "d3", "c3", "b3", "a3",
-    "h4", "g4", "f4", "e4", "d4", "c4", "b4", "a4",
-    "h5", "g5", "f5", "e5", "d5", "c5", "b5", "a5",
-    "h6", "g6", "f6", "e6", "d6", "c6", "b6", "a6",
-    "h7", "g7", "f7", "e7", "d7", "c7", "b7", "a7",
-    "h8", "g8", "f8", "e8", "d8", "c8", "b8", "a8",
-};
-// For taking an index (piece enum) and getting a piece
-const char *pieceStringMap[6] = {
-    "p", "n", "b", "r", "q", "k"
-};
-
 // Main driver code - initializes board and runs parser
 // The game memory also lives here as a game_state struct
 int main() {
@@ -60,20 +45,26 @@ int main() {
     last_move *lm = MALLOC(1, last_move);
     // Init movelist (for mate)
     moves *ms = MALLOC(1, moves);
+    // Use unicode characters to print
+    int do_unicode = 1;
     lm->dest_sq = -1;
     lm->orig_sq = -1;
     // Set up board
     init_board(gs);
-    print_board(gs, lm);
+    // Set up piece-square tables
+    int mg_table[12][64];
+    int eg_table[12][64];
+    init_tables(mg_table, eg_table);
+    print_board(gs, lm, do_unicode);
     printf("For all available commands, type '-help'\n");
     printf("To make a legal move, use long algebraic notation: ");
     printf("For example, e2e4 for the e4 opening.\n\n>");
     int flag;
     generateLegalMoves(ms, gs);
-    while ((flag = parse_input(gs, lm))) {
+    while ((flag = parse_input(gs, lm, mg_table, eg_table))) {
         // Reload board if input requires
         if (flag >= 1) {
-            print_board(gs, lm);
+            print_board(gs, lm, do_unicode);
             // Check whether game is over
             if (checkGameover(ms, gs)) {
                 break;
@@ -83,14 +74,14 @@ int main() {
             printf("\n");
             // Make computer move
             int start_time = get_time_ms();
-            int best_move = iterativelyDeepen(gs, 1000);
+            int best_move = iterativelyDeepen(gs, mg_table, eg_table, 1000);
             int end_time = get_time_ms();
             makeMove(best_move, gs);
             // Add to highlight for previous move
             lm->orig_sq = decodeSource(best_move);
             lm->dest_sq = decodeDest(best_move);
             printf("Thought for %g seconds\n", ((float)end_time - (float)start_time)/1000);
-            print_board(gs, lm);
+            print_board(gs, lm, do_unicode);
             if (checkGameover(ms, gs)) {
                 break;
             }
@@ -100,19 +91,14 @@ int main() {
                 printf("\n");
                 // Make computer move
                 int start_time = get_time_ms();
-                int best_move = iterativelyDeepen(gs, 1000);
+                int best_move = iterativelyDeepen(gs, mg_table, eg_table, 1000);
                 int end_time = get_time_ms();
                 makeMove(best_move, gs);
                 // Add to highlight for previous move
                 lm->orig_sq = decodeSource(best_move);
                 lm->dest_sq = decodeDest(best_move);
                 printf("Thought for %g seconds\n", ((float)end_time - (float)start_time)/1000);
-                print_board(gs, lm);
-                print_extras(gs);
-                generateLegalMoves(ms, gs);
-                printf("Legal moves:\n");
-                printMoves(ms);
-                print_board(gs, lm);
+                print_board(gs, lm, do_unicode);
                 fflush(stdout);
                 if (checkGameover(ms, gs)) {
                     break;

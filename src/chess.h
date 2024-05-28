@@ -32,15 +32,17 @@
 ===========================================
 */
 
-#define U64 unsigned long long
+#define U64 unsigned long long int
 #define C64 const U64
+#define WHITE 0
+#define BLACK 1
 /* utility macro for malloc() (memory allocation on the heap) for N things of
    type T, and casting to T* type */
 #define MALLOC(N, T) (T *)(malloc((N) * sizeof(T)))
 // backwards, so that bit shifting >> from top right square moves right, and >>
 // 8 times goes down. That is, 1 << 63 is the first square, a1, and 1 is the
 // last square, h8
-typedef enum {
+typedef enum square_e {
 	h1, g1, f1, e1, d1, c1, b1, a1,
     h2, g2, f2, e2, d2, c2, b2, a2,
     h3, g3, f3, e3, d3, c3, b3, a3,
@@ -51,7 +53,7 @@ typedef enum {
     h8, g8, f8, e8, d8, c8, b8, a8
 } square;
 // Move list
-typedef struct {
+typedef struct moves_t {
     int moves[256]; // List of moves (each int encodes a move)
     int count; // Number of moves in list
 } moves;
@@ -75,7 +77,6 @@ typedef struct gameState_t {
 ===========================================
 */
 
-#define U64 unsigned long long
 // Helper struct to keep track of moves so that they may be highlighted
 typedef struct lastMove_t {
     square orig_sq;
@@ -91,7 +92,7 @@ extern void init_board(game_state *gs);
 #define PIECE_MAP "PpNnBbRrQqKk"
 // Parsing and printing
 extern int parse_fen(game_state *gs, char *fen);
-extern void print_board(game_state *gs, last_move *lm);
+extern void print_board(game_state *gs, last_move *lm, int useUnicode);
 extern void print_all_bitboards(game_state *gs);
 extern void print_extras(game_state *gs);
 extern void clear_bitboards(game_state *gs);
@@ -147,7 +148,7 @@ extern U64 perft(int depth, game_state *gs, int printMove);
 #define btxt "\x1b[30m"
 // Reset
 #define reset_txt "\x1b[0m"
-extern int parse_input(game_state *gs, last_move *lm);
+extern int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_table[12][64]);
 extern int parse_fen(game_state *gs, char *fen);
 // For taking an index (square enum) and getting a string
 extern const char *boardStringMap[64];
@@ -166,7 +167,7 @@ extern int parse_move(char *input, game_state *gs, last_move *lm);
 -------------------------------------------
 ===========================================
 */
-extern void uci_loop(game_state *gs);
+extern void uci_loop(game_state *gs, int mg_table[12][64], int eg_table[12][64]);
 
 /*
 ===========================================
@@ -175,8 +176,10 @@ extern void uci_loop(game_state *gs);
 -------------------------------------------
 ===========================================
 */
+// Init piece-square tables
+extern void init_tables(int mg_table[12][64], int eg_table[12][64]);
 // Evaluates current position (in centipawns)
-extern int evaluate(game_state *gs);
+extern int evaluate(game_state *gs, int mg_table[12][64], int eg_table[12][64]);
 
 /*
 ===========================================
@@ -186,8 +189,8 @@ extern int evaluate(game_state *gs);
 ===========================================
 */
 // Finds best move for current player
-extern int findBestMove(game_state *gs, int depth, int *score);
+extern int findBestMove(game_state *gs, int mg_table[12][64], int eg_table[12][64], int depth, int *score);
 // Iteratively deepen w/ findBestMove
-extern int iterativelyDeepen(game_state *gs, int turn_time_ms);
+extern int iterativelyDeepen(game_state *gs, int mg_table[12][64], int eg_table[12][64], int turn_time_ms);
 
 #endif

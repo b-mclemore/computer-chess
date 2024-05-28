@@ -37,21 +37,6 @@ https://gist.github.com/DOBRO/2592c6dad754ba67e6dcaec8c90165bf
 
 */
 
-const char *boardStringMap[64] = {
-    "h1", "g1", "f1", "e1", "d1", "c1", "b1", "a1",
-    "h2", "g2", "f2", "e2", "d2", "c2", "b2", "a2",
-    "h3", "g3", "f3", "e3", "d3", "c3", "b3", "a3",
-    "h4", "g4", "f4", "e4", "d4", "c4", "b4", "a4",
-    "h5", "g5", "f5", "e5", "d5", "c5", "b5", "a5",
-    "h6", "g6", "f6", "e6", "d6", "c6", "b6", "a6",
-    "h7", "g7", "f7", "e7", "d7", "c7", "b7", "a7",
-    "h8", "g8", "f8", "e8", "d8", "c8", "b8", "a8",
-};
-// For taking an index (piece enum) and getting a piece
-const char *pieceStringMap[6] = {
-    "p", "n", "b", "r", "q", "k"
-};
-
 /*
 
 We need to define two helper functions. The first is a position parser. By UCI
@@ -114,10 +99,10 @@ listed below.
 
 */
 
-void parse_go(char *go, game_state *gs) {
+void parse_go(char *go, game_state *gs, int mg_table[12][64], int eg_table[12][64]) {
     // No flags implemented yet
 	go[0] = ' ';// <- Prevent unused warning
-    int best_move = iterativelyDeepen(gs, 1000);
+    int best_move = iterativelyDeepen(gs, mg_table, eg_table, 1000);
     square source_sq = decodeSource(best_move);
     square dest_sq = decodeDest(best_move);
 	piece promoteTo = decodePromote(best_move);
@@ -148,7 +133,9 @@ void print_move(int move) {
 // and ignore any unnecessary whitespace, but we'll assume that commands are
 // always well-formed for now
 #define INPUT_BUFFER 10000
-void uci_loop(game_state *gs) {
+void uci_loop(game_state *gs, int mg_table[12][64], int eg_table[12][64]) {
+    // Always use ascii (for windows)
+    int do_ascii = 0;
     // reset buffers
     setvbuf(stdin, NULL, _IOFBF, BUFSIZ);
     setvbuf(stdout, NULL, _IOFBF, BUFSIZ);
@@ -162,6 +149,8 @@ void uci_loop(game_state *gs) {
 
 	// Set to initial board
 	init_board(gs);
+    // Set up piece-square tables
+    init_tables(mg_table, eg_table);
 
     // main loop : continue until broken
     while (1) {
@@ -207,7 +196,7 @@ void uci_loop(game_state *gs) {
 
         // go - see above, begins evaluation based on given flags
         else if (strncmp(input, "go", 2) == 0) {
-            parse_go(input, gs);
+            parse_go(input, gs, mg_table, eg_table);
 			continue;
 		}
 
@@ -227,12 +216,9 @@ void uci_loop(game_state *gs) {
 		// debugging: print board
 		else if (strncmp(input, "debug", 5) == 0) {
 			last_move temp;
-			temp.dest_sq = 0;
-			temp.orig_sq = 0;
-            print_board(gs, &temp);
-			for (int i = 0; i < 64; i++) {
-				printf("%s ", boardStringMap[i]);
-			}
+			temp.dest_sq = -1;
+			temp.orig_sq = -1;
+            print_board(gs, &temp, do_ascii);
 			printf("\n");
 			continue;
 		}
@@ -244,6 +230,9 @@ void uci_loop(game_state *gs) {
 int main() {
     // Init game memory
     game_state *gs = MALLOC(1, game_state);
-    uci_loop(gs);
+    // Init piece-square tables
+    int mg_table[12][64];
+    int eg_table[12][64];
+    uci_loop(gs, mg_table, eg_table);
 	free(gs);
 }

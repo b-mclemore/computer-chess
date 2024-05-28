@@ -34,6 +34,21 @@
 
 */
 
+const char *boardStringMap[64] = {
+    "h1", "g1", "f1", "e1", "d1", "c1", "b1", "a1",
+    "h2", "g2", "f2", "e2", "d2", "c2", "b2", "a2",
+    "h3", "g3", "f3", "e3", "d3", "c3", "b3", "a3",
+    "h4", "g4", "f4", "e4", "d4", "c4", "b4", "a4",
+    "h5", "g5", "f5", "e5", "d5", "c5", "b5", "a5",
+    "h6", "g6", "f6", "e6", "d6", "c6", "b6", "a6",
+    "h7", "g7", "f7", "e7", "d7", "c7", "b7", "a7",
+    "h8", "g8", "f8", "e8", "d8", "c8", "b8", "a8",
+};
+// For taking an index (piece enum) and getting a piece
+const char *pieceStringMap[6] = {
+    "p", "n", "b", "r", "q", "k"
+};
+
 // It will be useful to have a bitboard printer as a debugging tool, which we'll
 // define here. It's pretty naive, just iterating through the bits and printing
 // 1 or 0.
@@ -268,9 +283,10 @@ tan, to match the chess.com color scheme.
 
 // Most fonts have unicode pieces doublewide, so we add a space so that they
 // don't get chopped in the command line
-char *unicode_pieces[12] = {"♙ ", "♞ ", "♝ ", "♜ ", "♛ ", "♚ "};
+char *unicode_pieces[6] = {"♙ ", "♞ ", "♝ ", "♜ ", "♛ ", "♚ "};
+char *ascii_pieces[6] = {"p ", "N ", "B ", "R ", "Q ", "K "};
 
-void print_board(game_state *gs, last_move *lm) {
+void print_board(game_state *gs, last_move *lm, int useUnicode) {
     printf("\n");
     // start position is a 1 in the far left bit
     U64 pos = (U64)1 << 63;
@@ -291,7 +307,7 @@ void print_board(game_state *gs, last_move *lm) {
             }
             // if no piece, continue, else color the piece
             char *txt = wtxt;
-            // If no piece, print double-wide space
+            // No piece = print double-wide space (unicode pieces are doublewide)
             char *piece = "  ";
             if (pos & gs->all_bb) {
                 if (pos & gs->color_bb[1]) {
@@ -300,7 +316,11 @@ void print_board(game_state *gs, last_move *lm) {
                 // Find which piece
                 for (int pc_idx = 0; pc_idx < 12; pc_idx++) {
                     if (pos & gs->piece_bb[pc_idx]) {
-                        piece = unicode_pieces[pc_idx / 2];
+                        if (useUnicode) {
+                            piece = unicode_pieces[pc_idx / 2];
+                        } else {
+                            piece = ascii_pieces[pc_idx / 2];
+                        }
                         break;
                     }
                 }
@@ -584,6 +604,19 @@ int parseDepth(char *input) {
 
 // Helper to check whether the current game has ended (no legal moves)
 int checkGameover(moves *ms, game_state *gs) {
+    // If there is insufficient material, the game is over
+    // For now, only lone kings are insufficient material
+    int material_flag = 1;
+    for (piece piec = pawn; piec < king; piec++) {
+        if (gs->color_bb[2 * piec] || gs->color_bb[2 * piec + 1]) {
+            material_flag = 0;
+            break;
+        }
+    }
+    if (material_flag) {
+        printf("The game is a draw by insufficient material.\n\n");
+        return 1;
+    }
     generateLegalMoves(ms, gs);
     // If there are no legal moves, the game is over
     if (ms->count == 0) {
@@ -608,7 +641,7 @@ We return 0 for failure, -1 for no new board, and 1 for a new board.
 
 // max buffer size
 #define INPUT_BUFFER 10000
-int parse_input(game_state *gs, last_move *lm) {
+int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_table[12][64]) {
     // reset buffers
     setvbuf(stdin, NULL, _IOFBF, BUFSIZ);
     setvbuf(stdout, NULL, _IOFBF, BUFSIZ);
@@ -617,14 +650,14 @@ int parse_input(game_state *gs, last_move *lm) {
     // zero out
     memset(input, 0, sizeof(input));
     fflush(stdout);
-	if ((strlen(input) < 4)) {
-        printf("The command was not recognized, try again.\n");
-        return -1;
-    }
     if (!fgets(input, INPUT_BUFFER, stdin)) {
         // failed to read
         printf("Failed to read input\n");
         return 0;
+    }
+	else if ((strlen(input) < 4)) {
+        printf("The command was not recognized, try again.\n");
+        return -1;
     }
     // quit program
     else if (!strncmp(input, "-quit", 4)) {
@@ -761,7 +794,7 @@ int parse_input(game_state *gs, last_move *lm) {
         return -1;
     // Show evaluation of current board (no search)
     } else if (!strncmp(input, "-eval", 5)){
-        printf("Board evaluation = %i\n", evaluate(gs));
+        printf("Board evaluation = %i\n", evaluate(gs, mg_table, eg_table));
         return -1;
     }
     // Make computer play itself
