@@ -558,12 +558,16 @@ void addMove(moves *move_list, int move) {
 
 // Generate all moves (lots of branching)
 void generateAllMoves(moves *moveList, game_state *gs) {
+    //
+    // Flags and initialization
+    //
     // Reset move count (no need to reset list)
     moveList->count = 0;
     int move;
     // Bitboard holding current pieces, bitboard holding ONLY ONE current piece, and 
     // bitboard containing its legal moves/attacks (if any), bitboard containing ONE attack
     U64 piece_bb, source_bb, attacks_bb, currAttack_bb;
+    square source_sq;
     int color = gs->whose_turn;
     int foe = 1 - color;
     // Emptiness (non-occupancy) bitboard for sliding attacks
@@ -573,6 +577,10 @@ void generateAllMoves(moves *moveList, game_state *gs) {
     // Flags for encoding later
     U64 captureFlag, doubleFlag, enPassantFlag, castleFlag;
     piece promoteTo;
+    //
+    // Generating ordinary moves
+    //
+    // REDO THIS? Why are we generating per square when we can generate many squares at once?
     for (piece piec = pawn; piec <= king; piec++) {
         // Get all pieces
         piece_bb = gs->piece_bb[2 * piec + color];
@@ -580,6 +588,7 @@ void generateAllMoves(moves *moveList, game_state *gs) {
         while (piece_bb) {
             // Get LSB
             source_bb = piece_bb & -piece_bb;
+            source_sq = bbToSq(source_bb);
             // Remove LSB from piece bitboard
             piece_bb = piece_bb & (piece_bb - 1);
             // Get all attacks
@@ -598,7 +607,8 @@ void generateAllMoves(moves *moveList, game_state *gs) {
                     attacks_bb = bishopAttacks(source_bb, empt);
                     break;
                 case rook:
-                    attacks_bb = rookAttacks(source_bb, empt);
+                    // attacks_bb = rookAttacks(source_bb, empt);
+                    attacks_bb = magicRookAttacks(source_sq, gs->all_bb);
                     break;
                 case queen:
                     attacks_bb = queenAttacks(source_bb, empt);
@@ -849,24 +859,23 @@ void generateLegalMoves(moves *move_list, game_state *gs) {
     // Init 
     move_list->count = 0;
     // First, generate pseudo-legal moves
-    moves *pseudo_legal = MALLOC(1, moves);
-    generateAllMoves(pseudo_legal, gs);
+    moves pseudo_legal;
+    generateAllMoves(&pseudo_legal, gs);
     // Then save memory and try all out
     game_state *save_file = MALLOC(1, game_state);
     saveGamestate(gs, save_file);
-    for (int i = 0; i < pseudo_legal->count; i++) {
+    for (int i = 0; i < pseudo_legal.count; i++) {
         // Try out move
-        makeMove(pseudo_legal->moves[i], gs);
+        makeMove(pseudo_legal.moves[i], gs);
         // If it works, add to movelist
         if (!checkCheck(gs)) {
-            addMove(move_list, pseudo_legal->moves[i]);
+            addMove(move_list, pseudo_legal.moves[i]);
         }
         // Undo before trying next
         undoPreviousMove(gs, save_file);
 
     }
     free(save_file);
-    free(pseudo_legal);
 }
 
 /*

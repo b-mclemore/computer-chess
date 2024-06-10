@@ -227,17 +227,17 @@ int* eg_base_tables[6] = {
 
 // Piece values - for example, pawns are worth 82 in the middlegame and
 // 94 in the endgame
-int mg_value[6] = { 82, 337, 365, 477, 1025, 10000};
-int eg_value[6] = { 94, 281, 297, 512,  936, 10000};
+int mg_value[6] = { 82, 337, 365, 477, 1025, 0};
+int eg_value[6] = { 94, 281, 297, 512,  936, 0};
 
 // Initialize tables
 void init_tables(int mg_table[12][64], int eg_table[12][64]) {
     for (piece piec = pawn; piec <= king; piec++) {
         for (int sq = 0; sq < 64; sq++) {
-            mg_table[piec]  [sq] = mg_value[piec] + mg_base_tables[piec][sq];
-            eg_table[piec]  [sq] = eg_value[piec] + eg_base_tables[piec][sq];
-            mg_table[piec+1][sq] = mg_value[piec] + mg_base_tables[piec][sq^56];
-            eg_table[piec+1][sq] = eg_value[piec] + eg_base_tables[piec][sq^56];
+            mg_table[2 * piec]  [sq] = mg_value[piec] + mg_base_tables[piec][sq];
+            eg_table[2 * piec]  [sq] = eg_value[piec] + eg_base_tables[piec][sq];
+            mg_table[2 * piec+1][sq] = mg_value[piec] + mg_base_tables[piec][sq^56];
+            eg_table[2 * piec+1][sq] = eg_value[piec] + eg_base_tables[piec][sq^56];
         }
     }
 }
@@ -288,12 +288,12 @@ int evaluate(game_state *gs, int mg_table[12][64], int eg_table[12][64]) {
 	// logically to allow for bit shifting "intuitively", meaning
 	// a8 = 0 for the tables, but h1 = 0 for the bitboards
     for (square sq = h1; sq <= a8; sq++) {
-        int logical_sq = 64 - sq;
+        int logical_sq = 63 - sq;
         int color = -1;
         int piec = find_piece(gs, &color, sq);
         if (piec != -1) {
-            mg[color] += mg_table[piec][logical_sq];
-            eg[color] += eg_table[piec][logical_sq];
+            mg[color] += mg_table[2 * piec + color][logical_sq];
+            eg[color] += eg_table[2 * piec + color][logical_sq];
             gamePhase += gamephaseInc[piec];
         }
     }
@@ -306,5 +306,5 @@ int evaluate(game_state *gs, int mg_table[12][64], int eg_table[12][64]) {
     int egPhase = 24 - mgPhase;
     // Get random noise (between -2 and 2)
 	int noise = random_at_most(4) - 2;
-    return ((mgScore * mgPhase + egScore * egPhase) / 24) + noise;
+    return (((mgScore * mgPhase + egScore * egPhase) / 24) + noise);
 }

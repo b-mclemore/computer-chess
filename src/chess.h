@@ -134,6 +134,24 @@ extern U64 perft(int depth, game_state *gs, int printMove);
 /*
 ===========================================
 -------------------------------------------
+                MAGIC
+-------------------------------------------
+===========================================
+*/
+
+extern U64 RookMasks[64];
+extern U64 RookMagics[64];
+extern U64 BishopMasks[64];
+extern U64 BishopMagics[64];
+extern U64 *RookAttacks[64];
+extern U64 *BishopAttacks[64];
+extern void init_magic_bitboards();
+extern U64 magicRookAttacks(square rook_sq, U64 all_bb);
+extern U64 magicBishopAttacks(square bishop_sq, U64 all_bb);
+
+/*
+===========================================
+-------------------------------------------
            COMMAND LINE INTERFACE
 -------------------------------------------
 ===========================================
@@ -157,6 +175,7 @@ extern const char *pieceStringMap[6];
 // Helper to check whether the current game has ended (no legal moves)
 extern int checkGameover(moves *ms, game_state *gs);
 extern int get_time_ms();
+extern void print_bitboard(U64 bitboard, int color);
 extern void printMoves(moves *moveList);
 extern int parse_move(char *input, game_state *gs, last_move *lm);
 

@@ -51,6 +51,8 @@ int main() {
     lm->orig_sq = -1;
     // Set up board
     init_board(gs);
+    // Set up magic bitboards
+    init_magic_bitboards();
     // Set up piece-square tables
     int mg_table[12][64];
     int eg_table[12][64];
@@ -60,7 +62,6 @@ int main() {
     printf("To make a legal move, use long algebraic notation: ");
     printf("For example, e2e4 for the e4 opening.\n\n>");
     int flag;
-    generateLegalMoves(ms, gs);
     while ((flag = parse_input(gs, lm, mg_table, eg_table))) {
         // Reload board if input requires
         if (flag >= 1) {
@@ -74,7 +75,8 @@ int main() {
             printf("\n");
             // Make computer move
             int start_time = get_time_ms();
-            int best_move = iterativelyDeepen(gs, mg_table, eg_table, 1000);
+            //int score;
+            int best_move = iterativelyDeepen(gs, mg_table, eg_table, 1000);//findBestMove(gs, mg_table, eg_table, 7, &score);//
             int end_time = get_time_ms();
             makeMove(best_move, gs);
             // Add to highlight for previous move

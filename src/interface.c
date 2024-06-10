@@ -54,7 +54,7 @@ const char *pieceStringMap[6] = {
 // 1 or 0.
 // We also want to color the board, which we do by printing the codes defined in
 // the header
-static void print_bitboard(U64 bitboard, int color) {
+void print_bitboard(U64 bitboard, int color) {
     char *txt = wtxt;
     if (color)
         txt = btxt;
@@ -750,9 +750,19 @@ int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_tabl
             } else if (piece == 1) {
                 print_bitboard(knightAttacks(piece_bb), color);
             } else if (piece == 2) {
-                print_bitboard(bishopAttacks(piece_bb, ~gs->all_bb), color);
+                printf("Testing bishop on ce4\n");
+                print_bitboard(magicBishopAttacks(e4, gs->all_bb), color);
             } else if (piece == 3) {
-                print_bitboard(rookAttacks(piece_bb, ~gs->all_bb), color);
+                U64 all_rook_attacks = 0;
+                U64 rooks = gs->piece_bb[2 * rook + color];
+                while (rooks) {
+                    // Get LSB
+                    U64 lsb = rooks & -rooks;
+                    // Remove LSB
+                    rooks = rooks & (rooks - 1);
+                    all_rook_attacks |= magicRookAttacks(bbToSq(lsb), gs->all_bb);
+                }
+                print_bitboard(all_rook_attacks, color);
             } else if (piece == 4) {
                 print_bitboard(queenAttacks(piece_bb, ~gs->all_bb), color);
             } else if (piece == 5) {
