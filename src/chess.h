@@ -111,7 +111,8 @@ extern U64 queenAttacks(U64 queen_bb, U64 all_bb);
 extern U64 checkCheck(game_state *gs);
 
 // Encoding/decoding moves
-extern int encodeMove(U64 source_bb, U64 dest_bb, piece piec, piece promoteTo, U64 captureFlag, U64 doubleFlag, U64 enPassantFlag, U64 castleFlag);
+extern int encodeMove(U64 source_bb, U64 dest_bb, piece piec, piece promoteTo, U64 captureFlag, U64 doubleFlag, 
+    U64 enPassantFlag, U64 castleFlag, U64 turnFlag, piece capturedPiec);
 extern square decodeSource(int move);
 extern square decodeDest(int move);
 extern piece decodePiece(int move);
@@ -120,6 +121,8 @@ extern int decodeCapture(int move);
 extern int decodeDouble(int move);
 extern int decodeEnPassant(int move);
 extern int decodeCastle(int move);
+extern int decodeTurn(int move);
+extern piece decodeCapturedPiece(int move);
 
 // Saving game states
 extern void saveGamestate(game_state* gs, game_state *copy_address);
@@ -213,4 +216,27 @@ extern int findBestMove(game_state *gs, int mg_table[12][64], int eg_table[12][6
 // Iteratively deepen w/ findBestMove
 extern int iterativelyDeepen(game_state *gs, int mg_table[12][64], int eg_table[12][64], int turn_time_ms);
 
+/*
+===========================================
+-------------------------------------------
+                SEARCH
+-------------------------------------------
+===========================================
+*/
+// Initializes codes for each hash element (pieces per square plus extras)
+extern void init_zobrist_tables();
+// Check for hash collisions
+extern void debug_tables();
+// Get the hash key for the start position
+extern U64 start_hash();
+// Get the hash key for the current position
+extern U64 current_pos_hash(game_state *gs);
+// Initialize the hash tables to 0s
+void init_hash_table();
+// Update hash key
+extern U64 update_hash(int move, U64 currentHash);
+// Look into hash table, return 1 for no eval or less depth, otherwise return 0 and set *eval
+int get_eval(U64 hash, int *eval, int depth);
+// Add eval to hash table
+extern void update_hash_table(U64 hash, int eval, int depth);
 #endif

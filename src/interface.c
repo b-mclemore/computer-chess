@@ -407,7 +407,8 @@ int matchMove(int proposed_move, moves *moveList) {
     // Now can iterate thru all moves and check matches:
     for (int i = 0; i < moveList->count; i++) {
         int candidate_move = moveList->moves[i];
-        if (candidate_move == proposed_move) {
+        U64 mask = ~(0b111 << 25);
+        if ((candidate_move & mask) == (proposed_move & mask)) {
             // Found match
             return 1;
         }
@@ -508,12 +509,17 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
         printf("The move given was not recognized (squares do not exist).\n");
         return -1;
     }
-    // Now, check legality: first, find move ...
+    // Now, encode move to prepare to make it/check legality.
+    // Grab all encoded information:
+    // Whose turn
     int color = gs->whose_turn;
+    // Square moving from and square moving to
     U64 source_bb = strToSquare(input[0], input[1]);
     U64 dest_bb = strToSquare(input[2], input[3]);
+    // Whether we promote (pawn = default, means no promotion)
     piece promoteTo = pawn;
     promoteTo = charToPiece(input[4]);
+    // Find which piece we are moving
     piece piec = pawn;
     for (int pc_idx = 2; pc_idx < 12; pc_idx++) {
         if (source_bb & gs->piece_bb[pc_idx]) {
@@ -521,12 +527,25 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
             break;
         }
     }
+    // Find other extras: whether we are capturing, double moving a pawn, en-passant capturing,
+    // or castling
     int captureFlag = !!(dest_bb & gs->color_bb[1 - color]);
     int doubleFlag = !!(((dest_bb << 16 & source_bb) || (dest_bb >> 16 & source_bb)) & (!piec));
     int enPassantFlag = !!((dest_bb & gs->en_passant) && (!piec));
     int castleFlag = (((dest_bb << 2 & source_bb) || (dest_bb >> 2 & source_bb)) && (piec == king));
-    int move = encodeMove(source_bb, dest_bb, piec, promoteTo, captureFlag, doubleFlag, enPassantFlag, castleFlag);
-    // ... next, generate all moves and see if this matches
+    // If we do capture, encode which piece we capture (useful for hashing)
+    piece capturedPiec = pawn;
+    if (captureFlag) {
+        for (piece p = pawn; p <= king; p++) {
+            if (dest_bb & gs->piece_bb[2 * p + (1 - color)]) {
+                capturedPiec = p;
+                break;
+            }
+        }
+    }
+    // Finally, encode the move
+    int move = encodeMove(source_bb, dest_bb, piec, promoteTo, captureFlag, doubleFlag, enPassantFlag, castleFlag, color, capturedPiec);
+    // Next, generate all moves and see if this matches
     moves *move_list = MALLOC(1, moves);
     generateAllMoves(move_list, gs);
     if (matchMove(move, move_list)) {
@@ -684,7 +703,9 @@ int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_tabl
                "\t\t\t(WN for white knight, BR for black rook, etc)\n");
         printf("-legalmoves\t:\tprint all legal moves in the current position\n");
         printf("-perft [depth]\t:\tprint the number of legal moves at a given depth\n");
-        printf("-eval\t\t:\tgives evaluation score of current position");
+        printf("-eval\t\t:\tgives evaluation score of current position\n");
+        printf("-test\t\t:\thave the computer play itself\n");
+        printf("-hash\t\t:\tcheck for hash collisions (currently just checks bitstring keys)\n");
         return -1;
     }
     // print board for debugging
@@ -803,6 +824,11 @@ int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_tabl
     // Make computer play itself
     else if (!strncmp(input, "-test", 5)) {
         return 3;
+    }
+    // Check for hash collisions
+    else if (!strncmp(input, "-hash", 5)){
+        debug_tables();
+        return -1;
     }
     // default: try to make move
     else {

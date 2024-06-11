@@ -57,6 +57,10 @@ int main() {
     int mg_table[12][64];
     int eg_table[12][64];
     init_tables(mg_table, eg_table);
+    // Set up hash tables
+    init_zobrist_tables();
+    init_hash_table();
+    
     print_board(gs, lm, do_unicode);
     printf("For all available commands, type '-help'\n");
     printf("To make a legal move, use long algebraic notation: ");

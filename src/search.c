@@ -36,24 +36,32 @@ best move for the opponent.
 */
 
 // Combined minimax (negaMax)
-int negaMax(game_state *gs, int mg_table[12][64], int eg_table[12][64], int alpha, int beta, int depth) {
+int negaMax(game_state *gs, int mg_table[12][64], int eg_table[12][64], int alpha, int beta, int depth, U64 hash) {
 	// If at leaf node (max depth), return evaluation
     if (depth == 0) return evaluate(gs, mg_table, eg_table);
     int max = -9999999;
 	int score;
 	moves move_list[256];
-    game_state *save_file = MALLOC(1, game_state);
+    game_state save_file;
 	generateAllMoves(move_list, gs);
 	// For every move, find the optimum
     for (int i = 0; i < move_list->count; i++)  {
 		int move = move_list->moves[i];
 		// First, save position
-		saveGamestate(gs, save_file);
+		saveGamestate(gs, &save_file);
 		// Next, make move
 		makeMove(move, gs);
+		// Make sure legal before continuing
 		if (!checkCheck(gs)) {
-			// Make sure legal before continuing
-			score = -negaMax(gs, mg_table, eg_table, -beta, -alpha, depth - 1);
+			// Check whether hash table holds an evaluation of sufficient depth
+			U64 currentHash = update_hash(move, hash);
+			if (get_eval(currentHash, &score, depth)) {
+				// Otherwise, calculate by hand...
+				score = -negaMax(gs, mg_table, eg_table, -beta, -alpha, depth - 1, currentHash);
+				// ... and update hashtable
+				// TODO: fix this
+				// update_hash_table(currentHash, score, depth);
+			}
 			if (score > max) {
 				max = score;
 			}
@@ -65,11 +73,8 @@ int negaMax(game_state *gs, int mg_table[12][64], int eg_table[12][64], int alph
 			}
 		}
 		// Undo move
-		undoPreviousMove(gs, save_file);
+		undoPreviousMove(gs, &save_file);
     }
-	// Free save file
-	free(save_file);
-	// Subtract one: makes engine prefer faster checkmates
     return max;
 }
 
@@ -82,31 +87,41 @@ int findBestMove(game_state *gs, int mg_table[12][64], int eg_table[12][64], int
 	int beta = -alpha;
 	int score;
 	moves move_list[256];
-    game_state *save_file = MALLOC(1, game_state);
+    game_state save_file;
 	generateLegalMoves(move_list, gs);
 	int best_move = move_list->moves[0];
+	// Initialize hash here. Probably it would be (barely) faster to hold this in the main
+	// GUI loop and update after we make a move, so that we don't have to keep initializing
+	// on each turn, but I'm lazy and this is dwarfed by the actual search's compute time
+	U64 hash = current_pos_hash(gs);
 	// For every move, find the optimum
     for (int i = 0; i < move_list->count; i++)  {
 		int move = move_list->moves[i];
 		// First, save position
-		saveGamestate(gs, save_file);
+		saveGamestate(gs, &save_file);
 		// Next, make move
 		makeMove(move, gs);
-        score = -negaMax(gs, mg_table, eg_table, -beta, -alpha, depth - 1);
+		// Check whether hash table holds an evaluation of sufficient depth
+		U64 currentHash = update_hash(move, hash);
+		if (get_eval(currentHash, &score, depth)) {
+			// Otherwise, calculate by hand...
+			score = -negaMax(gs, mg_table, eg_table, -beta, -alpha, depth - 1, currentHash);
+			// ... and update hashtable
+			// TODO: fix this
+			// update_hash_table(currentHash, score, depth);
+		}
 		/*
 		square source_sq = decodeSource(move_list->moves[i]);
         square dest_sq = decodeDest(move_list->moves[i]);
 		printf("\t%s -> %s\t\t:\t%i\n",boardStringMap[source_sq], boardStringMap[dest_sq], score);
 		*/
 		// Undo move
-		undoPreviousMove(gs, save_file);
+		undoPreviousMove(gs, &save_file);
         if(score > max) {
             max = score;
 			best_move = move;
 		}
     }
-	// Free save file
-	free(save_file);
 	*best_score = max;
     return best_move;
 }
@@ -135,6 +150,7 @@ int iterativelyDeepen(game_state *gs, int mg_table[12][64], int eg_table[12][64]
 			return best_move;
 		}
 	}
+	printf("Looked %i moves ahead\n", ply);
 	return best_move;
 }
 
