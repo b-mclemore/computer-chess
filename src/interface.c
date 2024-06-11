@@ -750,19 +750,12 @@ int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_tabl
             } else if (piece == 1) {
                 print_bitboard(knightAttacks(piece_bb), color);
             } else if (piece == 2) {
-                printf("Testing bishop on ce4\n");
-                print_bitboard(magicBishopAttacks(e4, gs->all_bb), color);
+                // We don't use magic bitboards here, since magic bitboards are simpler
+                // for single squares (as in per-piece move generation). It's shorter to
+                // just use the Dumb7Fill here.
+                print_bitboard(bishopAttacks(piece_bb, ~gs->all_bb), color);
             } else if (piece == 3) {
-                U64 all_rook_attacks = 0;
-                U64 rooks = gs->piece_bb[2 * rook + color];
-                while (rooks) {
-                    // Get LSB
-                    U64 lsb = rooks & -rooks;
-                    // Remove LSB
-                    rooks = rooks & (rooks - 1);
-                    all_rook_attacks |= magicRookAttacks(bbToSq(lsb), gs->all_bb);
-                }
-                print_bitboard(all_rook_attacks, color);
+                print_bitboard(rookAttacks(piece_bb, ~gs->all_bb), color);
             } else if (piece == 4) {
                 print_bitboard(queenAttacks(piece_bb, ~gs->all_bb), color);
             } else if (piece == 5) {

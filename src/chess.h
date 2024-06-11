@@ -148,6 +148,7 @@ extern U64 *BishopAttacks[64];
 extern void init_magic_bitboards();
 extern U64 magicRookAttacks(square rook_sq, U64 all_bb);
 extern U64 magicBishopAttacks(square bishop_sq, U64 all_bb);
+extern U64 magicQueenAttacks(square queen_sq, U64 all_bb);
 
 /*
 ===========================================

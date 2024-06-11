@@ -102,110 +102,119 @@ magic constant, which can take some time.
 
 */
 
-#define OCCUPANCY_VARIATIONS 4096
-#define TRUE 1
-#define FALSE 0
-
-int findMagicNumber(int square, U64 masks[const 64], U64 *magic) {
-    U64 occupancies[OCCUPANCY_VARIATIONS];
-    U64 attacks[OCCUPANCY_VARIATIONS];
-    U64 usedAttacks[OCCUPANCY_VARIATIONS] = {0};
-    U64 mask = masks[square];
-    int relevantBits = __builtin_popcountll(mask);
-    int occupancyCount = 1 << relevantBits;
-
-    // Generate all possible occupancies
-    for (int i = 0; i < occupancyCount; ++i) {
-        occupancies[i] = 0ULL;
-        int bitIndex = 0;
-        for (int bit = 0; bit < 64; ++bit) {
-            if (mask & (1ULL << bit)) {
-                if (i & (1ULL << bitIndex)) {
-                    occupancies[i] |= (1ULL << bit);
-                }
-                ++bitIndex;
-            }
-        }
-        attacks[i] = rookAttacks(square, ~occupancies[i]);
-    }
-
-    // Random number generator
-    srand(time(NULL));
-
-    // Try finding a magic number
-    for (int k = 0; k < 100000000; ++k) {
-        *magic = ((U64)rand() << 32) | rand();
-
-        // Check for magic number validity
-        for (int i = 0; i < OCCUPANCY_VARIATIONS; i++) usedAttacks[i] = 0ULL;
-        int fail = FALSE;
-        for (int i = 0; i < occupancyCount; i++) {
-            U64 index = (occupancies[i] * (*magic)) >> (64 - relevantBits);
-            if (usedAttacks[index] == 0ULL) {
-                usedAttacks[index] = attacks[i];
-            } else if (usedAttacks[index] != attacks[i]) {
-                fail = TRUE;
-                break;
-            }
-        }
-        if (!fail) return TRUE;
-    }
-    return FALSE;
+// A helper to get a random U64
+static U64 random_u64() {
+  U64 u1, u2, u3, u4;
+  u1 = (U64)(rand()) & 0xFFFF; u2 = (U64)(rand()) & 0xFFFF;
+  u3 = (U64)(rand()) & 0xFFFF; u4 = (U64)(rand()) & 0xFFFF;
+  return u1 | (u2 << 16) | (u3 << 32) | (u4 << 48);
 }
 
-static void init_rook_magics(U64 masks[const 64], U64 magics[const 64]) {
-    for (square sq = h1; sq <= a8; sq++) {
-        U64 magicNum;
-        if (findMagicNumber(sq, masks, &magicNum)) {
-            magics[sq] = magicNum;
-            printf("Magic number for square %s: 0x%016llx\n", boardStringMap[sq], magicNum);
-        } else {
-            fprintf(stderr, "Failed to find magic number for square %s\n", boardStringMap[sq]);
-        }
-    }
+// A helper to get a random U64 with a low number of nonzero bits
+U64 random_u64_fewbits() {
+  return random_u64() & random_u64() & random_u64();
 }
 
-static void init_rook_tables(U64 masks[const 64], U64 magics[const 64], U64 attacks[64][4096]) {
-	for (square sq = h1; sq <= a8; sq++) {
-        int relevantBits = __builtin_popcountll(masks[sq]);
-        int occupancyCount = 1 << relevantBits;
-        
-        for (int i = 0; i < occupancyCount; ++i) {
-            U64 occupancy = 0ULL;
-            int bitIndex = 0;
-            for (int bit = 0; bit < 64; ++bit) {
-                if (masks[sq] & (1ULL << bit)) {
-                    if (i & (1 << bitIndex)) {
-                        occupancy |= (1ULL << bit);
-                    }
-                    ++bitIndex;
-                }
-            }
-            U64 index = (occupancy * magics[sq]) >> (64 - relevantBits);
-            attacks[sq][index] = rookAttacks(1ULL << sq, ~occupancy);
-        }
-    }
+const int BitTable[64] = {
+  63, 30, 3, 32, 25, 41, 22, 33, 15, 50, 42, 13, 11, 53, 19, 34, 61, 29, 2,
+  51, 21, 43, 45, 10, 18, 47, 1, 54, 9, 57, 0, 35, 62, 31, 40, 4, 49, 5, 52,
+  26, 60, 6, 23, 44, 46, 27, 56, 16, 7, 39, 48, 24, 59, 14, 12, 55, 38, 28,
+  58, 20, 37, 17, 36, 8
+};
+
+int pop_1st_bit(U64 *bb) {
+  U64 b = *bb ^ (*bb - 1);
+  unsigned int fold = (unsigned) ((b & 0xffffffff) ^ (b >> 32));
+  *bb &= (*bb - 1);
+  return BitTable[(fold * 0x783a9b23) >> 26];
 }
 
-static void init_bishop_magics(U64 masks[const 64], U64 magics[const 64]) {
-
+U64 index_to_uint64(int index, int bits, U64 m) {
+  int j;
+  U64 result = 0ULL;
+  for(int i = 0; i < bits; i++) {
+    j = pop_1st_bit(&m);
+    if(index & (1 << i)) result |= (1ULL << j);
+  }
+  return result;
 }
+
+// Helper to index into lookup table. Needs occupancy to already be masked
+static int get_magic_key(U64 occupancy, U64 magic, int numBits) {
+  return (int)((occupancy * magic) >> (64 - numBits));
+}
+
+static U64 find_magic(square sq, int numBits, int doRooks, U64 masks[64]) {
+	U64 mask = masks[sq];
+	U64 b[4096], a[4096], magic;
+	int i, j, k, n, fail;
+
+	U64 *used = doRooks? rookAttacksTable[sq] : bishopAttacksTable[sq];
+
+	// Find number of flipped bits
+	n = __builtin_popcountll(mask);
+
+	for (i = 0; i < (1 << n); i++) {
+		b[i] = index_to_uint64(i, n, mask);
+		a[i] = doRooks? rookAttacks(1ULL << sq, ~b[i]) : bishopAttacks(1ULL << sq, ~b[i]);
+	}
+	// Try out up to a million different random keys until we find one
+	for(k = 0; k < 100000000; k++) {
+		magic = random_u64_fewbits();
+		if(__builtin_popcountll((mask * magic) & 0xFF00000000000000ULL) < 6) continue;
+		for(i = 0; i < 4096; i++) used[i] = 0ULL;
+		for(i = 0, fail = 0; !fail && i < (1 << n); i++) {
+			j = get_magic_key(b[i], magic, numBits);
+			if(used[j] == 0ULL) used[j] = a[i];
+			else if(used[j] != a[i]) fail = 1;
+		}
+		if(!fail) return magic;
+	}
+	printf("***Failed***\n");
+	return 0ULL;
+}
+
+static const int RBits[64] = {
+  12, 11, 11, 11, 11, 11, 11, 12,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  12, 11, 11, 11, 11, 11, 11, 12
+};
+
+static const int BBits[64] = {
+  6, 5, 5, 5, 5, 5, 5, 6,
+  5, 5, 5, 5, 5, 5, 5, 5,
+  5, 5, 7, 7, 7, 7, 5, 5,
+  5, 5, 7, 9, 9, 7, 5, 5,
+  5, 5, 7, 9, 9, 7, 5, 5,
+  5, 5, 7, 7, 7, 7, 5, 5,
+  5, 5, 5, 5, 5, 5, 5, 5,
+  6, 5, 5, 5, 5, 5, 5, 6
+};
 
 void init_magic_bitboards() {
 	init_rook_masks(rookMasks);
 	init_bishop_masks(bishopMasks);
-	init_rook_magics(rookMasks, rookMagics);
-	init_bishop_magics(bishopMasks, bishopMagics);
-	init_rook_tables(rookMasks, rookMagics, rookAttacksTable);
+	for (square sq = h1; sq <= a8; sq++) {
+		rookMagics[sq] = find_magic(sq, RBits[sq], 1, rookMasks);
+	}
+	for (square sq = h1; sq <= a8; sq++) {
+		bishopMagics[sq] = find_magic(sq, BBits[sq], 0, bishopMasks);
+	}
 }
 
 U64 magicRookAttacks(square rook_sq, U64 occupancy) {
-    U64 relevantOccupancy = occupancy & rookMasks[rook_sq];
-    relevantOccupancy *= rookMagics[rook_sq];
-    relevantOccupancy >>= (64 - __builtin_popcountll(rookMasks[rook_sq]));
-    return rookAttacksTable[rook_sq][relevantOccupancy];
+    return rookAttacksTable[rook_sq][get_magic_key(occupancy & rookMasks[rook_sq], rookMagics[rook_sq], RBits[rook_sq])];
 }
 
-U64 magicBishopAttacks(square bishop_sq, U64 all_bb) {
-	return bishopAttacksTable[bishop_sq][(((all_bb | bishopMasks[bishop_sq]) ^ 7) * bishopMagics[bishop_sq]) >> 55];
+U64 magicBishopAttacks(square bishop_sq, U64 occupancy) {
+	return bishopAttacksTable[bishop_sq][get_magic_key(occupancy & bishopMasks[bishop_sq], bishopMagics[bishop_sq], BBits[bishop_sq])];
+}
+
+U64 magicQueenAttacks(square queen_sq, U64 occupancy) {
+	return (magicBishopAttacks(queen_sq, occupancy) | magicRookAttacks(queen_sq, occupancy));
 }

@@ -604,14 +604,16 @@ void generateAllMoves(moves *moveList, game_state *gs) {
                     attacks_bb = knightAttacks(source_bb);
                     break;
                 case bishop:
-                    attacks_bb = bishopAttacks(source_bb, empt);
+                    // attacks_bb = bishopAttacks(source_bb, empt);
+                    attacks_bb = magicBishopAttacks(source_sq, gs->all_bb);
                     break;
                 case rook:
                     // attacks_bb = rookAttacks(source_bb, empt);
                     attacks_bb = magicRookAttacks(source_sq, gs->all_bb);
                     break;
                 case queen:
-                    attacks_bb = queenAttacks(source_bb, empt);
+                    // attacks_bb = queenAttacks(source_bb, empt);
+                    attacks_bb = magicQueenAttacks(source_sq, gs->all_bb);
                     break;
                 case king:
                     // If the king is still permitted to castle, add to available moves
