@@ -42,29 +42,90 @@
 // backwards, so that bit shifting >> from top right square moves right, and >>
 // 8 times goes down. That is, 1 << 63 is the first square, a1, and 1 is the
 // last square, h8
+
+// C formatting file loves stretching this enum out instead of leaving
+// it as an 8x8 ...
+
 typedef enum square_e {
-	h1, g1, f1, e1, d1, c1, b1, a1,
-    h2, g2, f2, e2, d2, c2, b2, a2,
-    h3, g3, f3, e3, d3, c3, b3, a3,
-    h4, g4, f4, e4, d4, c4, b4, a4,
-    h5, g5, f5, e5, d5, c5, b5, a5,
-    h6, g6, f6, e6, d6, c6, b6, a6,
-    h7, g7, f7, e7, d7, c7, b7, a7,
-    h8, g8, f8, e8, d8, c8, b8, a8
+    h1,
+    g1,
+    f1,
+    e1,
+    d1,
+    c1,
+    b1,
+    a1,
+    h2,
+    g2,
+    f2,
+    e2,
+    d2,
+    c2,
+    b2,
+    a2,
+    h3,
+    g3,
+    f3,
+    e3,
+    d3,
+    c3,
+    b3,
+    a3,
+    h4,
+    g4,
+    f4,
+    e4,
+    d4,
+    c4,
+    b4,
+    a4,
+    h5,
+    g5,
+    f5,
+    e5,
+    d5,
+    c5,
+    b5,
+    a5,
+    h6,
+    g6,
+    f6,
+    e6,
+    d6,
+    c6,
+    b6,
+    a6,
+    h7,
+    g7,
+    f7,
+    e7,
+    d7,
+    c7,
+    b7,
+    a7,
+    h8,
+    g8,
+    f8,
+    e8,
+    d8,
+    c8,
+    b8,
+    a8
 } square;
 // Move list
 typedef struct moves_t {
     int moves[256]; // List of moves (each int encodes a move)
-    int count; // Number of moves in list
+    int count;      // Number of moves in list
 } moves;
 // Game memory
 typedef struct gameState_t {
-    U64 piece_bb[12]; // The pairs of boards for each piece
-    U64 color_bb[2];  // The pair of color boards
-    U64 all_bb;       // The board for all pieces
-    int whose_turn;   // 0 = white, 1 = black
-    int castling;  // (0b0000 or nonzero, in order WKQWbkbq)
-    U64 en_passant;  // If last move was double pawn push, keep track of en-passant
+    U64 piece_bb[12];     // The pairs of boards for each piece
+    U64 color_bb[2];      // The pair of color boards
+    U64 all_bb;           // The board for all pieces
+    int whose_turn;       // 0 = white, 1 = black
+    int castling;         // (0b0000 or nonzero, in order WKQWbkbq)
+    U64 en_passant;       // If last move was double pawn push, keep track of
+                          // en-passant
     int halfmove_counter; // Counter for 50 move rule
     int moves;            // Number of moves in game
 } game_state;
@@ -82,7 +143,7 @@ typedef struct lastMove_t {
     square orig_sq;
     square dest_sq;
 } last_move;
-typedef enum {pawn, knight, bishop, rook, queen, king} piece;
+typedef enum { pawn, knight, bishop, rook, queen, king } piece;
 extern void init_board(game_state *gs);
 // https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation
 #define INIT_POS "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "
@@ -111,8 +172,9 @@ extern U64 queenAttacks(U64 queen_bb, U64 all_bb);
 extern U64 checkCheck(game_state *gs);
 
 // Encoding/decoding moves
-extern int encodeMove(U64 source_bb, U64 dest_bb, piece piec, piece promoteTo, U64 captureFlag, U64 doubleFlag, 
-    U64 enPassantFlag, U64 castleFlag, U64 turnFlag, piece capturedPiec);
+extern int encodeMove(U64 source_bb, U64 dest_bb, piece piec, piece promoteTo,
+                      U64 captureFlag, U64 doubleFlag, U64 enPassantFlag,
+                      U64 castleFlag, U64 turnFlag, piece capturedPiec);
 extern square decodeSource(int move);
 extern square decodeDest(int move);
 extern piece decodePiece(int move);
@@ -125,7 +187,7 @@ extern int decodeTurn(int move);
 extern piece decodeCapturedPiece(int move);
 
 // Saving game states
-extern void saveGamestate(game_state* gs, game_state *copy_address);
+extern void saveGamestate(game_state *gs, game_state *copy_address);
 extern void undoPreviousMove(game_state *gs, game_state *copy_address);
 extern void makeMove(int move, game_state *gs);
 
@@ -170,7 +232,8 @@ extern U64 magicQueenAttacks(square queen_sq, U64 all_bb);
 #define btxt "\x1b[30m"
 // Reset
 #define reset_txt "\x1b[0m"
-extern int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_table[12][64]);
+extern int parse_input(game_state *gs, last_move *lm, int mg_table[12][64],
+                       int eg_table[12][64]);
 extern int parse_fen(game_state *gs, char *fen);
 // For taking an index (square enum) and getting a string
 extern const char *boardStringMap[64];
@@ -190,7 +253,8 @@ extern int parse_move(char *input, game_state *gs, last_move *lm);
 -------------------------------------------
 ===========================================
 */
-extern void uci_loop(game_state *gs, int mg_table[12][64], int eg_table[12][64]);
+extern void uci_loop(game_state *gs, int mg_table[12][64],
+                     int eg_table[12][64]);
 
 /*
 ===========================================
@@ -212,14 +276,20 @@ extern int evaluate(game_state *gs, int mg_table[12][64], int eg_table[12][64]);
 ===========================================
 */
 // Finds best move for current player
-extern int findBestMove(game_state *gs, int mg_table[12][64], int eg_table[12][64], int depth, int *score);
+extern int findBestMove(game_state *gs, int mg_table[12][64],
+                        int eg_table[12][64], int depth, int *score);
 // Iteratively deepen w/ findBestMove
-extern int iterativelyDeepen(game_state *gs, int mg_table[12][64], int eg_table[12][64], int turn_time_ms);
+extern int iterativelyDeepen(game_state *gs, int mg_table[12][64],
+                             int eg_table[12][64], int turn_time_ms);
+// Debug search: simple pawn capture e4->f5
+extern void db_simple_pos();
+// Debug search: fork the king and rook via knight->d5
+extern void db_fork_pos();
 
 /*
 ===========================================
 -------------------------------------------
-                SEARCH
+            HASHING/TRANSPOSITION
 -------------------------------------------
 ===========================================
 */
@@ -232,11 +302,18 @@ extern U64 start_hash();
 // Get the hash key for the current position
 extern U64 current_pos_hash(game_state *gs);
 // Initialize the hash tables to 0s
-void init_hash_table();
+extern void init_hash_table();
 // Update hash key
 extern U64 update_hash(int move, U64 currentHash);
-// Look into hash table, return 1 for no eval or less depth, otherwise return 0 and set *eval
-int get_eval(U64 hash, int *eval, int depth);
+// Look into hash table, return 1 for no eval or less depth, otherwise return 0
+// and set *eval
+extern int get_eval(U64 hash, int *eval, int relativeDepth, int alpha,
+                    int beta);
+// For "no best move"
+#define NULLMOVE 0
 // Add eval to hash table
-extern void update_hash_table(U64 hash, int eval, int depth);
+void update_hash_table(U64 hash, int eval, int relativeDepth, int flag,
+                       int bestMove);
+// Debug updating hash
+extern void debug_all_updates();
 #endif

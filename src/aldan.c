@@ -7,9 +7,9 @@
 #include "chess.h"
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/timeb.h>
-#include <stdlib.h>
 
 /*
   _______________________________________
@@ -30,7 +30,7 @@
 
 ===========================================
 -------------------------------------------
-           		MAIN FILE
+                        MAIN FILE
 -------------------------------------------
 ===========================================
 
@@ -60,7 +60,7 @@ int main() {
     // Set up hash tables
     init_zobrist_tables();
     init_hash_table();
-    
+
     print_board(gs, lm, do_unicode);
     printf("For all available commands, type '-help'\n");
     printf("To make a legal move, use long algebraic notation: ");
@@ -74,19 +74,22 @@ int main() {
             if (checkGameover(ms, gs)) {
                 break;
             }
-        } 
+        }
         if (flag == 2) {
             printf("\n");
             // Make computer move
             int start_time = get_time_ms();
-            //int score;
-            int best_move = iterativelyDeepen(gs, mg_table, eg_table, 1000);//findBestMove(gs, mg_table, eg_table, 7, &score);//
+            // int score;
+            int best_move = iterativelyDeepen(
+                gs, mg_table, eg_table,
+                1000); // findBestMove(gs, mg_table, eg_table, 7, &score);
             int end_time = get_time_ms();
             makeMove(best_move, gs);
             // Add to highlight for previous move
             lm->orig_sq = decodeSource(best_move);
             lm->dest_sq = decodeDest(best_move);
-            printf("Thought for %g seconds\n", ((float)end_time - (float)start_time)/1000);
+            printf("Thought for %g seconds\n",
+                   ((float)end_time - (float)start_time) / 1000);
             print_board(gs, lm, do_unicode);
             if (checkGameover(ms, gs)) {
                 break;
@@ -103,7 +106,8 @@ int main() {
                 // Add to highlight for previous move
                 lm->orig_sq = decodeSource(best_move);
                 lm->dest_sq = decodeDest(best_move);
-                printf("Thought for %g seconds\n", ((float)end_time - (float)start_time)/1000);
+                printf("Thought for %g seconds\n",
+                       ((float)end_time - (float)start_time) / 1000);
                 print_board(gs, lm, do_unicode);
                 fflush(stdout);
                 if (checkGameover(ms, gs)) {

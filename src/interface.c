@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/timeb.h>
+#include <time.h>
+#include <unistd.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -35,19 +37,15 @@
 */
 
 const char *boardStringMap[64] = {
-    "h1", "g1", "f1", "e1", "d1", "c1", "b1", "a1",
-    "h2", "g2", "f2", "e2", "d2", "c2", "b2", "a2",
-    "h3", "g3", "f3", "e3", "d3", "c3", "b3", "a3",
-    "h4", "g4", "f4", "e4", "d4", "c4", "b4", "a4",
-    "h5", "g5", "f5", "e5", "d5", "c5", "b5", "a5",
-    "h6", "g6", "f6", "e6", "d6", "c6", "b6", "a6",
-    "h7", "g7", "f7", "e7", "d7", "c7", "b7", "a7",
-    "h8", "g8", "f8", "e8", "d8", "c8", "b8", "a8",
+    "h1", "g1", "f1", "e1", "d1", "c1", "b1", "a1", "h2", "g2", "f2",
+    "e2", "d2", "c2", "b2", "a2", "h3", "g3", "f3", "e3", "d3", "c3",
+    "b3", "a3", "h4", "g4", "f4", "e4", "d4", "c4", "b4", "a4", "h5",
+    "g5", "f5", "e5", "d5", "c5", "b5", "a5", "h6", "g6", "f6", "e6",
+    "d6", "c6", "b6", "a6", "h7", "g7", "f7", "e7", "d7", "c7", "b7",
+    "a7", "h8", "g8", "f8", "e8", "d8", "c8", "b8", "a8",
 };
 // For taking an index (piece enum) and getting a piece
-const char *pieceStringMap[6] = {
-    "p", "n", "b", "r", "q", "k"
-};
+const char *pieceStringMap[6] = {"p", "n", "b", "r", "q", "k"};
 
 // It will be useful to have a bitboard printer as a debugging tool, which we'll
 // define here. It's pretty naive, just iterating through the bits and printing
@@ -102,7 +100,8 @@ void print_extras(game_state *gs) {
         printf("Black may castle queenside\n");
     }
     if (gs->en_passant) {
-        printf("The en-passant square is at %s\n", boardStringMap[(bbToSq(gs->en_passant))]);
+        printf("The en-passant square is at %s\n",
+               boardStringMap[(bbToSq(gs->en_passant))]);
     }
     printf("There have been %i halfmoves since the last pawn move or capture\n",
            gs->halfmove_counter);
@@ -307,7 +306,8 @@ void print_board(game_state *gs, last_move *lm, int useUnicode) {
             }
             // if no piece, continue, else color the piece
             char *txt = wtxt;
-            // No piece = print double-wide space (unicode pieces are doublewide)
+            // No piece = print double-wide space (unicode pieces are
+            // doublewide)
             char *piece = "  ";
             if (pos & gs->all_bb) {
                 if (pos & gs->color_bb[1]) {
@@ -419,19 +419,19 @@ int matchMove(int proposed_move, moves *moveList) {
 // Helper to match a char to enum. Queen promotion is default
 piece charToPiece(char input) {
     switch (input) {
-        case 'N':
-            return knight;
-        case 'B':
-            return bishop;
-        case 'R':
-            return rook;
-        // No promotion
-        case '\n':
-            return pawn;
-		case ' ':
-			return pawn;
-        default:
-            return queen;
+    case 'N':
+        return knight;
+    case 'B':
+        return bishop;
+    case 'R':
+        return rook;
+    // No promotion
+    case '\n':
+        return pawn;
+    case ' ':
+        return pawn;
+    default:
+        return queen;
     }
 }
 
@@ -465,12 +465,14 @@ void printMove(int move) {
     } else {
         castle = " ";
     }
-    printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", source, dest, piec, promoteTo, capture, doubled, enPassant, castle);
+    printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", source, dest, piec, promoteTo,
+           capture, doubled, enPassant, castle);
 }
 
 // Debugging function to print all moves in a movelist
 void printMoves(moves *moveList) {
-    printf("\nSource\tDest\tPiece\tPromote\tCapture\tDouble\tEn pass\tCastle\n");
+    printf(
+        "\nSource\tDest\tPiece\tPromote\tCapture\tDouble\tEn pass\tCastle\n");
     for (int i = 0; i < moveList->count; i++) {
         printMove(moveList->moves[i]);
     }
@@ -498,9 +500,9 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
     input[2] = toupper(input[2]) - 65;
     input[1] -= 49;
     input[3] -= 49;
-	if (input[4] != ' ') {
-		input[4] = toupper(input[4]);
-	}
+    if (input[4] != ' ') {
+        input[4] = toupper(input[4]);
+    }
     int form = 0;
     for (int i = 0; i < 4; i++) {
         form += ((input[i] < 0) || (7 < input[i]));
@@ -527,12 +529,15 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
             break;
         }
     }
-    // Find other extras: whether we are capturing, double moving a pawn, en-passant capturing,
-    // or castling
+    // Find other extras: whether we are capturing, double moving a pawn,
+    // en-passant capturing, or castling
     int captureFlag = !!(dest_bb & gs->color_bb[1 - color]);
-    int doubleFlag = !!(((dest_bb << 16 & source_bb) || (dest_bb >> 16 & source_bb)) & (!piec));
+    int doubleFlag = !!(
+        ((dest_bb << 16 & source_bb) || (dest_bb >> 16 & source_bb)) & (!piec));
     int enPassantFlag = !!((dest_bb & gs->en_passant) && (!piec));
-    int castleFlag = (((dest_bb << 2 & source_bb) || (dest_bb >> 2 & source_bb)) && (piec == king));
+    int castleFlag =
+        (((dest_bb << 2 & source_bb) || (dest_bb >> 2 & source_bb)) &&
+         (piec == king));
     // If we do capture, encode which piece we capture (useful for hashing)
     piece capturedPiec = pawn;
     if (captureFlag) {
@@ -544,7 +549,9 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
         }
     }
     // Finally, encode the move
-    int move = encodeMove(source_bb, dest_bb, piec, promoteTo, captureFlag, doubleFlag, enPassantFlag, castleFlag, color, capturedPiec);
+    int move =
+        encodeMove(source_bb, dest_bb, piec, promoteTo, captureFlag, doubleFlag,
+                   enPassantFlag, castleFlag, color, capturedPiec);
     // Next, generate all moves and see if this matches
     moves *move_list = MALLOC(1, moves);
     generateAllMoves(move_list, gs);
@@ -554,7 +561,8 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
         saveGamestate(gs, save_file);
         // Make move ...
         makeMove(move, gs);
-        // ... then check if this would put the king in check, and undo move if needed
+        // ... then check if this would put the king in check, and undo move if
+        // needed
         if (checkCheck(gs)) {
             printf("This move would have the king in check\n");
             undoPreviousMove(gs, save_file);
@@ -562,9 +570,10 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
             return -1;
         }
     } else {
-		square source_sq = decodeSource(move);
+        square source_sq = decodeSource(move);
         square dest_sq = decodeDest(move);
-		printf("\t%s -> %s\n",boardStringMap[source_sq], boardStringMap[dest_sq]);
+        printf("\t%s -> %s\n", boardStringMap[source_sq],
+               boardStringMap[dest_sq]);
         printf("The move given was not legal.\n");
         return -1;
     }
@@ -579,13 +588,13 @@ int parse_move(char *input, game_state *gs, last_move *lm) {
 
 // Helper for perft: get time in milliseconds
 int get_time_ms() {
-    #ifdef WIN64
-        return GetTickCount();
-    #else
-		struct timeb time_value;
-		ftime(&time_value);
-		return time_value.time * 1000 + time_value.millitm;
-	#endif
+#ifdef WIN64
+    return GetTickCount();
+#else
+    struct timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    return time.tv_sec * 1000 + time.tv_nsec / 1000000;
+#endif
 }
 
 // Helper to print perft counts
@@ -599,7 +608,8 @@ void printPerft(int depth, game_state *gs, int per_move_flag) {
         }
         depth_count = perft(i, gs, (i == depth - 1 ? per_move_flag : 0));
         int end_ms = get_time_ms();
-        printf("Depth %i\t:\t%llu moves\t:\t%i ms\n", i, depth_count, end_ms - start_ms);
+        printf("Depth %i\t:\t%llu moves\t:\t%i ms\n", i, depth_count,
+               end_ms - start_ms);
     }
 }
 
@@ -643,7 +653,8 @@ int checkGameover(moves *ms, game_state *gs) {
         // Flip turn to make the check function look at the next player's king
         gs->whose_turn = 1 - gs->whose_turn;
         if (checkCheck(gs)) {
-            printf("%s has been checkmated.\n\n", 1 - gs->whose_turn ? "Black" : "White");
+            printf("%s has been checkmated.\n\n",
+                   1 - gs->whose_turn ? "Black" : "White");
         } else {
             printf("The game is a stalemate.\n\n");
         }
@@ -660,7 +671,8 @@ We return 0 for failure, -1 for no new board, and 1 for a new board.
 
 // max buffer size
 #define INPUT_BUFFER 10000
-int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_table[12][64]) {
+int parse_input(game_state *gs, last_move *lm, int mg_table[12][64],
+                int eg_table[12][64]) {
     // reset buffers
     setvbuf(stdin, NULL, _IOFBF, BUFSIZ);
     setvbuf(stdout, NULL, _IOFBF, BUFSIZ);
@@ -673,8 +685,7 @@ int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_tabl
         // failed to read
         printf("Failed to read input\n");
         return 0;
-    }
-	else if ((strlen(input) < 4)) {
+    } else if ((strlen(input) < 4)) {
         printf("The command was not recognized, try again.\n");
         return -1;
     }
@@ -701,11 +712,18 @@ int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_tabl
         printf("-movebb\t\t:\tshow move bitboards for a piece, "
                "semi-algebraically.\n"
                "\t\t\t(WN for white knight, BR for black rook, etc)\n");
-        printf("-legalmoves\t:\tprint all legal moves in the current position\n");
-        printf("-perft [depth]\t:\tprint the number of legal moves at a given depth\n");
+        printf(
+            "-legalmoves\t:\tprint all legal moves in the current position\n");
+        printf("-perft [depth]\t:\tprint the number of legal moves at a given "
+               "depth\n");
         printf("-eval\t\t:\tgives evaluation score of current position\n");
         printf("-test\t\t:\thave the computer play itself\n");
-        printf("-hash\t\t:\tcheck for hash collisions (currently just checks bitstring keys)\n");
+        printf("-hash\t\t:\tcheck for hash collisions (currently just checks "
+               "bitstring keys)\n");
+        printf("-dbhash\t\t:\tchecks whether updating the hash is working as "
+               "expected\n");
+        printf("-dbsearch\t:\tchecks whether searching the gametree is working "
+               "as expected\n");
         return -1;
     }
     // print board for debugging
@@ -762,18 +780,20 @@ int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_tabl
             U64 piece_bb = gs->piece_bb[2 * piece + color];
             if (piece == 0) {
                 if (color) {
-                    print_bitboard(bpPushes(piece_bb, ~gs->all_bb) | bpAttacks(piece_bb),
+                    print_bitboard(bpPushes(piece_bb, ~gs->all_bb) |
+                                       bpAttacks(piece_bb),
                                    color);
                 } else {
-                    print_bitboard(wpPushes(piece_bb, ~gs->all_bb) | wpAttacks(piece_bb),
+                    print_bitboard(wpPushes(piece_bb, ~gs->all_bb) |
+                                       wpAttacks(piece_bb),
                                    color);
                 }
             } else if (piece == 1) {
                 print_bitboard(knightAttacks(piece_bb), color);
             } else if (piece == 2) {
-                // We don't use magic bitboards here, since magic bitboards are simpler
-                // for single squares (as in per-piece move generation). It's shorter to
-                // just use the Dumb7Fill here.
+                // We don't use magic bitboards here, since magic bitboards are
+                // simpler for single squares (as in per-piece move generation).
+                // It's shorter to just use the Dumb7Fill here.
                 print_bitboard(bishopAttacks(piece_bb, ~gs->all_bb), color);
             } else if (piece == 3) {
                 print_bitboard(rookAttacks(piece_bb, ~gs->all_bb), color);
@@ -801,7 +821,8 @@ int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_tabl
     else if (!strncmp(input, "-perft", 6)) {
         int depth = parseDepth(input + 7);
         if (depth == -1) {
-            printf("The depth was ill-formatted, please use an integer, for example \'-perft 3\'");
+            printf("The depth was ill-formatted, please use an integer, for "
+                   "example \'-perft 3\'");
         } else {
             printPerft(depth, gs, 0);
         }
@@ -811,13 +832,14 @@ int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_tabl
     else if (!strncmp(input, "-perfm", 6)) {
         int depth = parseDepth(input + 7);
         if (depth == -1) {
-            printf("The depth was ill-formatted, please use an integer, for example \'-perft 3\'");
+            printf("The depth was ill-formatted, please use an integer, for "
+                   "example \'-perft 3\'");
         } else {
             printPerft(depth, gs, 1);
         }
         return -1;
-    // Show evaluation of current board (no search)
-    } else if (!strncmp(input, "-eval", 5)){
+        // Show evaluation of current board (no search)
+    } else if (!strncmp(input, "-eval", 5)) {
         printf("Board evaluation = %i\n", evaluate(gs, mg_table, eg_table));
         return -1;
     }
@@ -826,8 +848,25 @@ int parse_input(game_state *gs, last_move *lm, int mg_table[12][64], int eg_tabl
         return 3;
     }
     // Check for hash collisions
-    else if (!strncmp(input, "-hash", 5)){
+    else if (!strncmp(input, "-hash", 5)) {
         debug_tables();
+        return -1;
+    }
+    // Check whether hashing is functioning as expected
+    else if (!strncmp(input, "-dbhash", 7)) {
+        debug_all_updates();
+        return -1;
+    }
+    // Check whether searching is functioning as expected
+    else if (!strncmp(input, "-dbsearch", 9)) {
+        printf("Debug position:\n");
+        parse_fen(gs, "k7/8/8/5p2/4P3/6K1/8/8 w - - 0 1");
+        print_board(gs, lm, 1);
+        db_simple_pos();
+        printf("Debug position:\n");
+        parse_fen(gs, "8/8/1k3r2/8/8/4N1K1/8/8 w - - 0 1");
+        print_board(gs, lm, 1);
+        db_fork_pos();
         return -1;
     }
     // default: try to make move
